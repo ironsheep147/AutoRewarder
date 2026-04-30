@@ -1,26 +1,9 @@
 import json
 import os
 
-from .config import APP_DIR, GLOBAL_SETTINGS_PATH, account_dir, account_meta_path
+from ..config import APP_DIR, GLOBAL_SETTINGS_PATH
 
 SCHEMA_VERSION = 3
-
-DEFAULT_ACCOUNT_SCHEDULE = {
-    # Master toggle for this account's scheduled headless run.
-    "enabled": False,
-    # False = single burst when the headless runner fires.
-    # True  = drip-feed the total across runDuration at queriesPerHour.
-    "advancedScheduling": False,
-    "runDuration": 3,  # hours, 1..24
-    "queriesPerHour": 10,  # 1..99
-    "queries_pc": 30,  # 0..130
-    "queries_mobile": 20,  # 0..99
-    "last_triggered_date": None,
-}
-
-
-def default_account_schedule():
-    return dict(DEFAULT_ACCOUNT_SCHEDULE)
 
 
 def _read_json(path, default):
@@ -58,8 +41,6 @@ def _write_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     temp_path = path + ".tmp"
 
-    # Clean a stale temp file that might have sticky attributes or be locked
-    # briefly. Ignore failures — we'll retry below.
     if os.path.exists(temp_path):
         try:
             os.remove(temp_path)
@@ -75,13 +56,10 @@ def _write_json(path, data):
             return
         except PermissionError as e:
             last_err = e
-            # Typical on Windows when AV scans the file between open & replace,
-            # or when another instance briefly holds it. Back off and retry.
             _time.sleep(0.15 * (attempt + 1))
         except OSError as e:
             last_err = e
             _time.sleep(0.1)
-    # All retries failed — let the caller decide whether it's fatal.
     raise last_err if last_err else OSError(f"Could not write {path}")
 
 
@@ -150,66 +128,3 @@ class GlobalSettingsManager:
         settings = self.get_settings()
         settings["current_account_id"] = account_id
         self.save_settings(settings)
-
-
-class AccountMetaManager:
-    """
-    Per-account metadata (currently just first_setup_done).
-    Stored at accounts/<account_id>/meta.json.
-    """
-
-    def __init__(self, account_id):
-        self.account_id = account_id
-        self.path = account_meta_path(account_id)
-
-    def get_meta(self):
-        defaults = {"first_setup_done": False}
-
-        if not os.path.exists(account_dir(self.account_id)):
-            try:
-                os.makedirs(account_dir(self.account_id), exist_ok=True)
-            except OSError:
-                pass
-
-        if not os.path.exists(self.path):
-            try:
-                self.save_meta(defaults)
-            except OSError:
-                pass
-            return defaults
-
-        meta = _read_json(self.path, None)
-        if not isinstance(meta, dict):
-            try:
-                self.save_meta(defaults)
-            except OSError:
-                pass
-            return defaults
-
-        return {**defaults, **meta}
-
-    def save_meta(self, meta):
-        _write_json(self.path, meta)
-
-    def is_first_setup_done(self):
-        return bool(self.get_meta().get("first_setup_done"))
-
-    def mark_up_as_done(self):
-        meta = self.get_meta()
-        meta["first_setup_done"] = True
-        self.save_meta(meta)
-
-    def get_schedule(self):
-        """Return this account's schedule, with defaults for missing keys."""
-        meta = self.get_meta()
-        sched = meta.get("schedule") if isinstance(meta, dict) else None
-        merged = default_account_schedule()
-        if isinstance(sched, dict):
-            merged.update({k: sched.get(k, v) for k, v in merged.items()})
-        return merged
-
-    def set_schedule(self, sched):
-        """Persist this account's schedule. `sched` should be a dict."""
-        meta = self.get_meta()
-        meta["schedule"] = sched
-        self.save_meta(meta)

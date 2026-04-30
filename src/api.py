@@ -21,15 +21,15 @@ from .config import (
     history_path,
     status_path,
 )
-from .driver_manager import DriverManager
-from .history import HistoryManager
-from .search_engine import SearchEngine
 from .utils import check_for_updates
-from .settings_manager import GlobalSettingsManager, AccountMetaManager
-from .account_manager import AccountManager
-from .daily_set import DailySet
-from .human_behavior import HumanBehavior
-from . import edge_policy
+from .accounts import (
+    AccountManager,
+    AccountMetaManager,
+    GlobalSettingsManager,
+)
+from .emulator import DriverManager, HumanBehavior, edge_policy
+from .search import HistoryManager, SearchEngine
+from .dailytasks import DailySet
 
 
 class AutoRewarderAPI:
