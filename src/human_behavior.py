@@ -1,3 +1,5 @@
+"""Human-like interaction helpers for Selenium-driven browsing."""
+
 import random
 import time
 from selenium.common.exceptions import WebDriverException

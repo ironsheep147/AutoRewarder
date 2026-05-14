@@ -25,6 +25,7 @@ from .config import (
 
 
 def _new_account_id():
+    """Return a random short account id."""
     return uuid.uuid4().hex[:12]
 
 
@@ -44,12 +45,14 @@ class AccountManager:
         os.makedirs(ACCOUNTS_DIR, exist_ok=True)
 
     def _log(self, msg):
+        """Send a log message if a logger is configured."""
         if self._logger:
             self._logger(msg)
 
     # ---- Index I/O ----------------------------------------------------
 
     def _read_index(self):
+        """Load the accounts index list from disk."""
         if not os.path.exists(ACCOUNTS_INDEX_PATH):
             return []
         try:
@@ -60,6 +63,7 @@ class AccountManager:
             return []
 
     def _write_index(self, accounts):
+        """Persist the accounts index list to disk atomically."""
         os.makedirs(APP_DIR, exist_ok=True)
         tmp = ACCOUNTS_INDEX_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -69,6 +73,7 @@ class AccountManager:
     # ---- Queries ------------------------------------------------------
 
     def list(self):
+        """Return account entries with UI-ready metadata."""
         current = self.current_id()
         accounts = self._read_index()
         result = []
@@ -88,6 +93,7 @@ class AccountManager:
         return result
 
     def get(self, account_id):
+        """Return metadata for a specific account id, or None."""
         for acc in self._read_index():
             if acc.get("id") == account_id:
                 return {
@@ -100,16 +106,20 @@ class AccountManager:
         return None
 
     def current_id(self):
+        """Return the currently selected account id, or None."""
         return self._global.get_current_account_id()
 
     def get_current(self):
+        """Return the currently selected account entry, or None."""
         aid = self.current_id()
         return self.get(aid) if aid else None
 
     def exists(self, account_id):
+        """Return True if the account id exists in the index."""
         return any(acc.get("id") == account_id for acc in self._read_index())
 
     def _is_first_setup_done(self, account_id):
+        """Check whether the account meta marks first setup done."""
         meta_path = account_meta_path(account_id)
         if not os.path.exists(meta_path):
             return False
@@ -145,11 +155,13 @@ class AccountManager:
         return {"id": aid, "label": label, "first_setup_done": False}
 
     def select(self, account_id):
+        """Set the current account id in global settings."""
         if account_id is not None and not self.exists(account_id):
             raise ValueError(f"Account not found: {account_id}")
         self._global.set_current_account_id(account_id)
 
     def rename(self, account_id, new_label):
+        """Rename an account label in the index."""
         new_label = (new_label or "").strip()
         if not new_label:
             raise ValueError("Label must not be empty")

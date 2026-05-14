@@ -36,6 +36,7 @@ from src.config import LOG_FILE_PATH, LOG_MAX_SIZE
 
 
 def _iso_now():
+    """Return current time as an ISO string with seconds precision."""
     return datetime.now().isoformat(timespec="seconds")
 
 
@@ -271,6 +272,7 @@ def _run_account(api, acc, pc_override=None, mobile_override=None, force=False):
 
 
 def main():
+    """Parse CLI args and run scheduled or targeted accounts."""
     parser = argparse.ArgumentParser(
         description="AutoRewarder headless / scheduled runner (multi-account aware)"
     )

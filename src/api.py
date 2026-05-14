@@ -1,3 +1,5 @@
+"""Core API for bridging the GUI and automation routines."""
+
 import os
 import sys
 import time
@@ -113,6 +115,7 @@ class AutoRewarderAPI:
     # ------------------------------------------------------------------
 
     def set_window(self, window):
+        """Attach the webview window and start background tasks."""
         self._webview_window = window
         self.start_update_check()
 
@@ -128,6 +131,7 @@ class AutoRewarderAPI:
             print(message)
 
     def open_history_window(self):
+        """Open the history viewer window."""
         # Local import: pywebview is a GUI-only dependency, kept out of the
         # headless CLI import chain (see comment at top of this module).
         import webview
@@ -144,12 +148,14 @@ class AutoRewarderAPI:
         )
 
     def start_update_check(self):
+        """Start a one-time background update check."""
         if self._update_check_started:
             return
         self._update_check_started = True
         threading.Thread(target=self.run_update_check, daemon=True).start()
 
     def run_update_check(self):
+        """Check for updates and notify the UI when a newer version exists."""
         try:
             needs_update, latest_version = check_for_updates(logger=self.log)
         except Exception as e:
@@ -189,6 +195,7 @@ class AutoRewarderAPI:
             self.log(f"[ERROR] Error displaying update alert: {e}")
 
     def open_link(self, url):
+        """Open a URL in the system default browser."""
         webbrowser.open(url)
 
     def load_driver_in_background(self):
@@ -211,6 +218,7 @@ class AutoRewarderAPI:
                 self._webview_window.evaluate_js("stop_loader()")
 
     def check_driver_status(self):
+        """Return True while the driver warmup thread is active."""
         return self.is_driver_loading
 
     # ------------------------------------------------------------------
@@ -222,6 +230,7 @@ class AutoRewarderAPI:
         return self.global_settings.get_settings()
 
     def set_hide_browser(self, is_hide):
+        """Persist and apply the hide-browser setting."""
         self.hide_browser = bool(is_hide)
         if self.driver_manager is not None:
             self.driver_manager.hide_browser = bool(is_hide)
@@ -475,9 +484,11 @@ class AutoRewarderAPI:
     # ------------------------------------------------------------------
 
     def list_accounts(self):
+        """Return accounts for UI display."""
         return self.account_manager.list()
 
     def get_current_account(self):
+        """Return the currently selected account, or None."""
         return self.account_manager.get_current()
 
     def create_account(self, label):
@@ -511,6 +522,7 @@ class AutoRewarderAPI:
         return {"ok": True, "id": new_id, "label": new_account["label"]}
 
     def switch_account(self, account_id):
+        """Switch to the specified account if possible."""
         if self._run_lock.locked():
             self.log("[WARNING] Cannot switch account while the bot is running.")
             return False
@@ -527,6 +539,7 @@ class AutoRewarderAPI:
         return True
 
     def rename_account(self, account_id, new_label):
+        """Rename an account label."""
         try:
             self.account_manager.rename(account_id, new_label)
         except ValueError as e:
@@ -536,6 +549,7 @@ class AutoRewarderAPI:
         return True
 
     def delete_account(self, account_id):
+        """Delete an account and refresh the UI."""
         if self._run_lock.locked() and account_id == self.account_manager.current_id():
             self.log(
                 "[WARNING] Cannot delete the active account while the bot is running."
@@ -724,6 +738,7 @@ class AutoRewarderAPI:
     # ------------------------------------------------------------------
 
     def get_history(self):
+        """Return the current account query history."""
         if self.history is None:
             return []
         return self.history.get_history()
@@ -733,6 +748,7 @@ class AutoRewarderAPI:
     # ------------------------------------------------------------------
 
     def log(self, message):
+        """Log to the GUI when attached; otherwise to stdout."""
         if self._webview_window:
             try:
                 safe_message = json.dumps(message)

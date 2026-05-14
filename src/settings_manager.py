@@ -1,3 +1,5 @@
+"""Settings and metadata persistence for AutoRewarder."""
+
 import json
 import os
 
@@ -20,6 +22,7 @@ DEFAULT_ACCOUNT_SCHEDULE = {
 
 
 def default_account_schedule():
+    """Return a fresh copy of the default per-account schedule."""
     return dict(DEFAULT_ACCOUNT_SCHEDULE)
 
 
@@ -95,6 +98,7 @@ class GlobalSettingsManager:
         self.path = GLOBAL_SETTINGS_PATH
 
     def get_settings(self):
+        """Return settings merged with defaults."""
         defaults = {
             "hide_browser": False,
             "current_account_id": None,
@@ -136,17 +140,21 @@ class GlobalSettingsManager:
         return merged
 
     def save_settings(self, settings):
+        """Persist settings to disk."""
         _write_json(self.path, settings)
 
     def set_hide_browser(self, is_hide):
+        """Update the hide_browser flag in settings."""
         settings = self.get_settings()
         settings["hide_browser"] = bool(is_hide)
         self.save_settings(settings)
 
     def get_current_account_id(self):
+        """Return the current account id from settings."""
         return self.get_settings().get("current_account_id")
 
     def set_current_account_id(self, account_id):
+        """Persist the current account id in settings."""
         settings = self.get_settings()
         settings["current_account_id"] = account_id
         self.save_settings(settings)
@@ -163,6 +171,7 @@ class AccountMetaManager:
         self.path = account_meta_path(account_id)
 
     def get_meta(self):
+        """Return per-account meta merged with defaults."""
         defaults = {"first_setup_done": False}
 
         if not os.path.exists(account_dir(self.account_id)):
@@ -189,12 +198,15 @@ class AccountMetaManager:
         return {**defaults, **meta}
 
     def save_meta(self, meta):
+        """Persist per-account meta to disk."""
         _write_json(self.path, meta)
 
     def is_first_setup_done(self):
+        """Return True if first setup is marked complete."""
         return bool(self.get_meta().get("first_setup_done"))
 
     def mark_up_as_done(self):
+        """Mark first setup as completed."""
         meta = self.get_meta()
         meta["first_setup_done"] = True
         self.save_meta(meta)

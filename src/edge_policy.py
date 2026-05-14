@@ -22,6 +22,7 @@ _VALUE_NAME = "BrowserSignin"
 
 
 def is_supported():
+    """Return True on Windows where Edge policy edits are supported."""
     return platform.system() == "Windows"
 
 

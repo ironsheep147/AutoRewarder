@@ -1,3 +1,5 @@
+"""History storage and retrieval for per-account searches."""
+
 import os
 import json
 from datetime import datetime
