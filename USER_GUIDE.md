@@ -184,15 +184,21 @@ For background runs (Autostart or CLI mode) where there's no visible window, use
 
 ### Scheduled runs
 
-Each account has its own schedule card in the Settings window. Enable it to run that account automatically when **Start with Windows** is on (or when you run the headless CLI).
+Each account has its own schedule card in the Settings window. The main schedule toggle turns on automated background runs, but it also controls how your manual GUI runs behave.
 
-- **Simple schedule**: runs the PC and Mobile counts once at launch
-- **Advanced scheduling**: spreads the total across the run duration using the queries-per-hour target
+**Standard Schedule**
+Turn on the main Schedule toggle, but leave Advanced scheduling *off*. The bot will run automatically at a random minute, processing the PC and Mobile queries in one go.
 
-It runs in the background and takes jittered breaks (+/- 25%) to mimic human behavior.
+**Advanced Scheduling**
+Turn on **both** the **Schedule toggle** and the **Advanced scheduling** toggle. This changes the bot's behavior entirely: instead of doing all searches at once, it safely spreads your queries across the specified **Run duration**, taking jittered breaks (+/- 25%) to mimic human behavior.
 
-> **Note:** Advanced scheduling only applies when the schedule toggle is enabled. If Schedule is off, manual runs use the normal pace.
-> When Schedule is enabled, Advanced scheduling uses the run duration and queries/hour from the schedule card to pace the run; PC/Mobile counts still come from the main screen.
+You can use scheduling in two ways:
+* **Automated Background Runs:** Runs triggered automatically when using **Start with Windows** or headless CLI.
+* **Manual GUI Runs:** If **Advanced scheduling** and the **Schedule toggle** are enabled in the settings, clicking the **Start** button on the main screen will respect these settings. It will spread the total queries across your specified run duration.
+
+*(Note: If the Schedule toggle is OFF, manual GUI runs will always use the classic run).*
+
+> **Safety First:** If your `QUERIES / HOUR` setting and `RUN DURATION` conflict (for example, setting 30 QPH for 90 total but a long 9-hour duration), the bot will prioritize the **Run duration**. It will stretch your searches over the entire time period to look like a natural human user and keep your account safe.
 
 > [!WARNING]
 > **Important:** Make sure that your PC is connected to the internet and does not go to sleep while the bot is running.
