@@ -94,7 +94,8 @@ if __name__ == "__main__":
                 pass
 
         try:
-            image = Image.open(os.path.join(ASSETS_DIR, "icon.ico"))
+            with Image.open(os.path.join(ASSETS_DIR, "icon.ico")) as img:
+                image = img.copy()
         except Exception:
             image = Image.new("RGB", (64, 64), (0, 0, 0))
 

@@ -236,8 +236,9 @@ class AccountMetaManager:
         Persist this account's schedule. `sched` should be a dict.
 
         Args:
-            sched: dict with keys matching default_account_schedule, but can omit any keys to keep them
-                at their current values. Example: {"enabled": True, "queries_per_hour": 15}
+            sched: dict with keys matching default_account_schedule.
+                Missing keys will fall back to default values.
+                Example: {"enabled": True, "queriesPerHour": 15}
         """
         meta = self.get_meta()
         meta["schedule"] = sched
