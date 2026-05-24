@@ -23,7 +23,7 @@ Welcome! This guide will help you get started with AutoRewarder and explain all 
 
 ### Step 1: Download
 1. Go to the [Releases page](https://github.com/safarsin/AutoRewarder/releases) on GitHub
-2. Find the latest release (v3.2 or newer)
+2. Find the latest release (v3.3 or newer)
 3. Download `AutoRewarder-Setup.exe`
 
 ### Step 2: Install
@@ -101,9 +101,13 @@ Adding another account is slightly different, so please follow these steps:
 1. Open AutoRewarder.exe
 2. Select an account from the dropdown
 3. Set PC and Mobile query counts (PC 0-130, Mobile 0-99). Set one to 0 to skip it
-4. Click the **"Start run"** button
-5. Watch the status indicator show that AutoRewarder is working
-6. The terminal-like window below shows what's happening in real-time
+4. *(Optional)* Toggle **"Daily tasks only"** to skip searches and only collect dashboard click-through tasks
+5. Click the **"Start run"** button
+6. Watch the status indicator show that AutoRewarder is working
+7. The terminal-like window below shows what's happening in real-time
+8. To interrupt the run at any time, click the **"Stop"** button — the browser will close cleanly and no orphan processes are left behind
+
+**Tip:** Closing the main window sends AutoRewarder to the system tray. Use the tray icon to reopen the window or choose **Exit** to fully close the app.
 
 ### What's Happening?
 
@@ -113,17 +117,24 @@ Adding another account is slightly different, so please follow these steps:
 - It runs the PC phase first, then the Mobile phase (iPhone emulation)
 - It may occasionally switch to Images/Videos/News tabs
 - It may take short "coffee breaks" during longer sessions
-- After the PC phase, it may run Daily Set tasks (once per day, per account)
-- The process continues until all searches are complete
+- If Schedule is enabled and Advanced scheduling is on, the run is paced across the schedule duration using the queries-per-hour target
+- After the PC phase, it collects Daily Set + "More Activities" click-through tasks (once per day, per account). Locked cards, sweepstakes and promo banners are automatically skipped — only point-earning tasks are clicked
+- The process continues until all searches are complete, or until you click **Stop**
 - You'll see updates in the log window
 
 If a new version is available, AutoRewarder can show an update notification and a download link.
+
+#### Daily tasks only
+
+If you've already done your searches manually (or just want to clean up the dashboard quickly), enable the **"Daily tasks only"** toggle before starting. The run skips both Bing search phases and goes straight to the Rewards dashboard to harvest the Daily Set + More Activities cards.
 
 ### After Completion
 
 - The **"Start"** button will become enabled again
 - You can start another session or close the app
 - Your search history is saved automatically
+- If you stopped the run via **Stop**, partial progress is kept (whatever searches and daily-task clicks already happened are credited as usual)
+- Closing the window sends AutoRewarder to the system tray; use the tray icon to reopen or **Exit** to fully close the app
 
 ---
 
@@ -148,9 +159,18 @@ If you want to disable this setting, simply turn it off and save settings. Or re
 
 <img src="assets/screenshots/start-up.png" width="400">
 
+### System Tray (Close to tray)
+
+When you close the main window, AutoRewarder keeps running in the system tray.
+
+- Click the tray icon to reopen the window
+- Use **Exit** in the tray menu to fully close the app
+
 ### How to check if it's running or stop it (Task Manager)
 
-Since AutoRewarder can run silently in the background (when using Autostart or CLI mode), you might not see an open window. Here is how to manage it:
+If the AutoRewarder window is open, the in-app **Stop** button is the cleanest way to halt a run — it closes the browser, kills the WebDriver, and leaves no orphan Edge processes behind.
+
+For background runs (Autostart or CLI mode) where there's no visible window, use Task Manager:
 
 **To check status or force stop:**
 1. Open **Task Manager** (`Ctrl + Shift + Esc`).
@@ -164,12 +184,21 @@ Since AutoRewarder can run silently in the background (when using Autostart or C
 
 ### Scheduled runs
 
-Each account has its own schedule card in the Settings window. Enable it to run that account automatically when **Start with Windows** is on (or when you run the headless CLI).
+Each account has its own schedule card in the Settings window. The main schedule toggle turns on automated background runs, but it also controls how your manual GUI runs behave.
 
-- **Simple schedule**: runs the PC and Mobile counts once at launch
-- **Advanced scheduling**: spreads the total across the run duration using the queries-per-hour target
+**Standard Schedule**
+Turn on the main Schedule toggle, but leave Advanced scheduling *off*. The bot will run automatically at a random minute, processing the PC and Mobile queries in one go.
 
-It runs in the background and takes jittered breaks (+/- 25%) to mimic human behavior.
+**Advanced Scheduling**
+Turn on **both** the **Schedule toggle** and the **Advanced scheduling** toggle. This changes the bot's behavior entirely: instead of doing all searches at once, it safely spreads your queries across the specified **Run duration**, taking jittered breaks (+/- 25%) to mimic human behavior.
+
+You can use scheduling in two ways:
+* **Automated Background Runs:** Runs triggered automatically when using **Start with Windows** or headless CLI.
+* **Manual GUI Runs:** If **Advanced scheduling** and the **Schedule toggle** are enabled in the settings, clicking the **Start** button on the main screen will respect these settings. It will spread the total queries across your specified run duration.
+
+*(Note: If the Schedule toggle is OFF, manual GUI runs will always use the classic run).*
+
+> **Safety First:** If your `QUERIES / HOUR` setting and `RUN DURATION` conflict (for example, setting 30 QPH for 90 total but a long 9-hour duration), the bot will prioritize the **Run duration**. It will stretch your searches over the entire time period to look like a natural human user and keep your account safe.
 
 > [!WARNING]
 > **Important:** Make sure that your PC is connected to the internet and does not go to sleep while the bot is running.
@@ -294,12 +323,15 @@ A: First Setup creates a separate browser profile for each account. You only nee
 **Q: What if the app freezes?**  
 A: You can force-close it (Ctrl+Alt+Delete → Task Manager → AutoRewarder → End Task). Your history/settings will be preserved.
 
+**Q: Why doesn't the app close when I click X?**  
+A: Closing the window sends AutoRewarder to the system tray so it can keep running. Use **Exit** in the tray menu to fully close the app.
+
 **Q: Can I run this on Mac or Linux?** <br>
 A: Currently, the pre-built installer and standalone executable are only available for Windows. The application can run on Linux, but it requires manual setup from the source code. A portable/executable version for Linux is not available at this time. Mac OS is not supported.
 
 ---
 
 **Last Updated**: May 2026  
-**Version**: 3.2
+**Version**: 3.3
 
 Enjoy using AutoRewarder! 🎉

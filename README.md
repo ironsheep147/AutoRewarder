@@ -66,7 +66,7 @@ Clone this repo, create virtual environment, and run `python AutoRewarder.py`.
 
 | Layer | Technology |
 |-------|------------|
-| Backend | Python 3.12, [selenium](https://www.selenium.dev/), [pywebview](https://pywebview.flowrl.com/) |
+| Backend | Python 3.12, [selenium](https://www.selenium.dev/), [pywebview](https://pywebview.flowrl.com/), pystray, Pillow |
 | Frontend | HTML, CSS, JavaScript |
 | Bridge | pywebview JS API (pywebview.api) |
 | Build | [PyInstaller](https://pyinstaller.org/), [Inno Setup](https://jrsoftware.org/isinfo.php) |
@@ -90,6 +90,7 @@ Clone this repo, create virtual environment, and run `python AutoRewarder.py`.
 - First Setup per account with a dedicated Edge profile
 - PC and Mobile query controls (0-130 / 0-99)
 - Optional hide-browser mode (headless UI toggle)
+- Close-to-tray behavior with a tray menu (reopen or exit)
 - Per-account scheduled runs (simple or advanced)
 - Start with Windows/Linux toggle (autostart)
 - Live terminal-like logs with update notifications (GitHub Releases)
@@ -123,6 +124,8 @@ You do not need Python to use release builds.
 2. Install and run the app
 3. Add your first account and complete setup
 4. Set PC/Mobile counts and start a run
+
+> **Tip:** Closing the main window sends AutoRewarder to the system tray. Use the tray icon to reopen the window or choose **Exit** to fully close the app.
 
 For detailed guide, see [USER_GUIDE.md](USER_GUIDE.md)
 
@@ -229,14 +232,16 @@ AutoRewarder/
 │       ├── runner.py     # DailySet orchestrator + status persistence
 │       ├── card.py       # RewardsCard: DOM checks + click + tab dance
 │       └── card_js.py    # JS heuristics + CardStatus enum
-├── AutoRewarder.py       # Python backend and webview window
-├── AutoRewarder_CLI.py   # Headless runner (multi-account aware)
-├── AutoRewarder.spec     # PyInstaller build spec
-├── AutoRewarder.iss      # Inno Setup installer script
-├── LICENSE              
-├── README.md 
-├── USER_GUIDE.md          
-└── requirements.txt      
+├── AutoRewarder.py            # Python backend and webview window
+├── AutoRewarder_CLI.py        # Headless runner (multi-account aware)
+├── AutoRewarder.spec          # PyInstaller build spec
+├── AutoRewarder.iss           # Inno Setup installer script
+├── .pre-commit-config.yaml    # Pre-commit hooks configuration
+├── requirements.txt           # Production dependencies
+├── requirements-dev.txt       # Development & testing dependencies
+├── LICENSE                    # MIT License
+├── USER_GUIDE.md              # End-user documentation
+└── README.md                  # Project overview and developer setup
 ```
 
 ---
@@ -293,6 +298,7 @@ For common issues and solutions, see the [Troubleshooting](USER_GUIDE.md#trouble
 - [x] Mobile support
 - [x] Per-Account Scheduling
 - [x] Brand New UI
+- [x] System tray (close-to-tray)
 - [ ] Statistics dashboard (points tracking, session summaries)
 - [ ] Browser choice (Chrome, Firefox support in addition to Edge)
 - [ ] Daily "Claim" actions
