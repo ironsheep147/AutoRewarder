@@ -621,12 +621,13 @@ function format_schedule_summary(item, sched, enabled) {
   if (!enabled) return prefix + 'Schedule off';
   const pc = sched.queries_pc != null ? sched.queries_pc : 30;
   const mobile = sched.queries_mobile != null ? sched.queries_mobile : 20;
+  const time = (sched.run_time && /^\d{2}:\d{2}$/.test(sched.run_time)) ? sched.run_time : '09:00';
   if (sched.advancedScheduling) {
     const dur = sched.runDuration != null ? sched.runDuration : 3;
     const qph = sched.queriesPerHour != null ? sched.queriesPerHour : 10;
-    return `${prefix}PC ${pc} / Mobile ${mobile} · ${dur}h @ ${qph}/h`;
+    return `${prefix}${time} · PC ${pc} / Mobile ${mobile} · ${dur}h @ ${qph}/h`;
   }
-  return `${prefix}PC ${pc} / Mobile ${mobile} · at launch`;
+  return `${prefix}${time} · PC ${pc} / Mobile ${mobile}`;
 }
 
 function build_schedule_card(item) {
@@ -724,6 +725,12 @@ function build_schedule_card(item) {
   rowPcMobile.appendChild(make_form_field('Mobile queries', 'number', 'schedule-queries-mobile', mobileDefault, { min: 0, max: 99 }));
   body.appendChild(rowPcMobile);
 
+  // Daily fire time row — when the OS-level scheduled task triggers for
+  // this account. Only effective when the global Start-with-Windows
+  // toggle is on AND this account's schedule is enabled.
+  const timeDefault = (sched.run_time && /^\d{2}:\d{2}$/.test(sched.run_time)) ? sched.run_time : '09:00';
+  body.appendChild(make_form_field('Daily run time', 'time', 'schedule-run-time', timeDefault, {}));
+
   // Duration + qph row (only meaningful when advancedScheduling is on).
   const rowAdv = document.createElement('div');
   rowAdv.className = 'form-grid-2 sched-adv-fields';
@@ -770,6 +777,7 @@ function build_schedule_card(item) {
       queries_mobile: parseInt(card.querySelector('.schedule-queries-mobile').value, 10),
       runDuration: parseInt(card.querySelector('.schedule-run-duration').value, 10),
       queriesPerHour: parseInt(card.querySelector('.schedule-queries-per-hour').value, 10),
+      run_time: card.querySelector('.schedule-run-time').value,
     };
     status.textContent = format_schedule_summary(item, liveSched, toggleInput.checked);
   };
@@ -782,7 +790,7 @@ function build_schedule_card(item) {
     rowAdv.classList.toggle('dim', !advInput.checked);
     refreshSummary();
   });
-  body.querySelectorAll('input[type="number"]').forEach(f => {
+  body.querySelectorAll('input[type="number"], input[type="time"]').forEach(f => {
     f.addEventListener('input', refreshSummary);
   });
 
@@ -824,6 +832,7 @@ async function save_settings() {
     const mobile = parseInt(card.querySelector('.schedule-queries-mobile').value, 10);
     const runDuration = parseInt(card.querySelector('.schedule-run-duration').value, 10);
     const queriesPerHour = parseInt(card.querySelector('.schedule-queries-per-hour').value, 10);
+    const runTime = card.querySelector('.schedule-run-time').value;
 
     if (enabled) {
       if (isNaN(pc) || pc < 0 || pc > 130) {
@@ -836,6 +845,10 @@ async function save_settings() {
       }
       if ((pc || 0) + (mobile || 0) === 0) {
         show_toast('Set at least one of PC or Mobile queries above 0.', 'warning');
+        return;
+      }
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(runTime || '')) {
+        show_toast('Daily run time must be a valid HH:MM value.', 'warning');
         return;
       }
       if (advancedScheduling) {
@@ -859,6 +872,7 @@ async function save_settings() {
         queries_mobile: isNaN(mobile) ? 20 : mobile,
         runDuration: isNaN(runDuration) ? 3 : runDuration,
         queriesPerHour: isNaN(queriesPerHour) ? 10 : queriesPerHour,
+        run_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(runTime || '') ? runTime : '09:00',
       },
     });
   }

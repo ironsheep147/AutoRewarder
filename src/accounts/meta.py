@@ -16,6 +16,10 @@ DEFAULT_ACCOUNT_SCHEDULE = {
     "queries_pc": 30,  # 0..130
     "queries_mobile": 20,  # 0..99
     "last_triggered_date": None,
+    # Wall-clock time at which the OS-level scheduled task fires for this
+    # account (24h "HH:MM"). Each account gets its own scheduled task so
+    # users can stagger runs (e.g. Alice 09:00, Bob 10:30).
+    "run_time": "09:00",
 }
 
 
