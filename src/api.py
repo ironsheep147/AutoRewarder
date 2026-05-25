@@ -93,6 +93,12 @@ class AutoRewarderAPI:
         # into the per-account meta.json it referenced.
         self._migrate_legacy_global_schedule()
 
+        # One-shot migration: lift any pre-existing fire-on-login autostart
+        # (HKCU Run / .desktop) into the new daily scheduled task / systemd
+        # timer. Otherwise a previously-enabled autostart would keep opening
+        # a visible GUI at every login until the user manually toggles.
+        self._migrate_legacy_autostart()
+
         # Scheduled runs are driven by the OS autostart entry which launches
         # `AutoRewarder.py --headless` → `AutoRewarder_CLI.main()`. No in-app
         # daemon thread.
@@ -389,6 +395,59 @@ class AutoRewarderAPI:
         if "schedule" in settings:
             settings.pop("schedule", None)
             self.global_settings.save_settings(settings)
+
+    def _migrate_legacy_autostart(self):
+        """
+        Lift a pre-existing fire-on-login autostart entry (HKCU Run on
+        Windows, ~/.config/autostart/AutoRewarder.desktop on Linux) into
+        the new daily scheduled task / systemd timer.
+
+        Why this matters: a previously-enabled autostart was registered
+        WITHOUT --headless on some old versions, so it pops a visible
+        pywebview window at every login. Even on versions that did pass
+        --headless, the GUI startup still flashes briefly. The new daily
+        scheduler fires at AUTOSTART_TIME (09:00) and goes straight to
+        AutoRewarder_CLI.main(), no UI.
+
+        No-op if the new scheduler is already set up (the user already
+        re-toggled, or the legacy entry was never there). Failures are
+        swallowed — a stale legacy entry is not worth crashing startup.
+        """
+        try:
+            if self.is_autostart_enabled():
+                return
+        except Exception:
+            return
+
+        system = platform.system()
+        legacy = False
+
+        if system == "Windows":
+            try:
+                import winreg
+
+                run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_READ
+                ) as key:
+                    winreg.QueryValueEx(key, _AUTOSTART_TASK_NAME)
+                    legacy = True
+            except Exception:
+                legacy = False
+        elif system == "Linux":
+            try:
+                legacy = os.path.exists(self._legacy_linux_autostart_path())
+            except Exception:
+                legacy = False
+
+        if not legacy:
+            return
+
+        self._safe_log("Migrating legacy autostart entry to daily scheduled task...")
+        try:
+            self._set_autostart_registry(True)
+        except Exception as e:
+            self._safe_log(f"[WARNING] Autostart migration failed: {e}")
 
     # ---- Autostart (OS-level) — ported from v3.1 main -----------------
 
