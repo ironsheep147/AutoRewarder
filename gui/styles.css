@@ -4,6 +4,12 @@
    ========================================================================= */
 
 :root {
+  /* Tell the engine that the whole UI is dark-themed. Native form
+     controls (notably the <input type="time"> clock indicator) then
+     render their glyphs in their dark-mode variant — white-on-
+     transparent instead of black — and stay visible on --surface-1. */
+  color-scheme: dark;
+
   /* Palette */
   --bg:           #0b0d12;
   --surface-1:    #141821;
@@ -1334,11 +1340,6 @@ input[type="number"]:focus {
 
 .form-field input[type="number"] { text-align: left; }
 
-/* Native time/date pickers render their indicator glyph (clock, calendar)
-   in a color derived from the form control's color-scheme. On dark
-   surfaces the default light-scheme icon disappears against the
-   background — opt into dark mode so the icon renders in white. */
-.form-field input[type="time"] { color-scheme: dark; }
 
 .form-field input:focus,
 .form-field select:focus {
