@@ -494,12 +494,18 @@ class AutoRewarderAPI:
         return False
 
     # Bumped whenever the format of registered scheduled tasks changes in
-    # a way that requires re-creating existing tasks on disk (e.g. v1
-    # switched dev-mode commands from python.exe to pythonw.exe to avoid
-    # the console-window flash). Stored in global_settings as
-    # `autostart_schema_version`. Users on autoStartUp=True with a lower
-    # version get all their tasks re-registered on next launch.
-    _AUTOSTART_SCHEMA_VERSION = 1
+    # a way that requires re-creating existing tasks on disk:
+    #   * v1 switched dev-mode commands from python.exe to pythonw.exe
+    #     to avoid the console-window flash.
+    #   * v2 switched Windows registration from `schtasks /Create /SC DAILY
+    #     /ST HH:MM` (flag form) to `schtasks /Create /XML <file>` so the
+    #     resulting task carries StartWhenAvailable=true — without it,
+    #     Windows silently skips daily triggers that fired while the
+    #     machine was off, unlike systemd's Persistent=true on Linux.
+    # Stored in global_settings as `autostart_schema_version`. Users on
+    # autoStartUp=True with a lower version get all their tasks re-
+    # registered on next launch.
+    _AUTOSTART_SCHEMA_VERSION = 2
 
     def _migrate_legacy_autostart(self):
         """
@@ -726,24 +732,134 @@ class AutoRewarderAPI:
 
     # ---- Per-account OS-task management -------------------------------
 
+    def _autostart_exec_and_args(self, account_id):
+        """
+        Split the autostart command into (executable, arguments) for the
+        Task Scheduler XML Action element, which expects them separately.
+        Mirrors the same dev-vs-frozen logic as _autostart_command.
+        """
+        if getattr(sys, "frozen", False):
+            return sys.executable, f"--headless --account {account_id}"
+
+        python_exe = sys.executable
+        candidate = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if os.path.exists(candidate):
+            python_exe = candidate
+        entry = os.path.join(BASE_DIR, "AutoRewarder.py")
+        return python_exe, f'"{entry}" --headless --account {account_id}'
+
+    def _build_windows_task_xml(self, account_id, run_time, label):
+        """
+        Build a Task Scheduler 1.2 XML for a daily run.
+
+        Key setting: <StartWhenAvailable>true</StartWhenAvailable>. Without
+        it, Windows silently skips a trigger that fired while the machine
+        was off (unlike systemd's Persistent=true). With it, the task
+        runs as soon as possible after the missed time at the next boot —
+        matching the Linux behavior.
+
+        Also: <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+        so laptop users on battery still get their run.
+        """
+        executable, arguments = self._autostart_exec_and_args(account_id)
+
+        def esc(s):
+            return (
+                s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+                .replace("'", "&apos;")
+            )
+
+        description = f"AutoRewarder daily run ({label})"
+        # Past anchor date — only the HH:MM portion of StartBoundary
+        # matters for DaysInterval=1 recurrence.
+        start_boundary = f"2025-01-01T{run_time}:00"
+
+        return (
+            '<?xml version="1.0" encoding="UTF-16"?>\n'
+            '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n'
+            "  <RegistrationInfo>\n"
+            f"    <Description>{esc(description)}</Description>\n"
+            "  </RegistrationInfo>\n"
+            "  <Triggers>\n"
+            "    <CalendarTrigger>\n"
+            f"      <StartBoundary>{start_boundary}</StartBoundary>\n"
+            "      <Enabled>true</Enabled>\n"
+            "      <ScheduleByDay>\n"
+            "        <DaysInterval>1</DaysInterval>\n"
+            "      </ScheduleByDay>\n"
+            "    </CalendarTrigger>\n"
+            "  </Triggers>\n"
+            "  <Principals>\n"
+            '    <Principal id="Author">\n'
+            "      <LogonType>InteractiveToken</LogonType>\n"
+            "      <RunLevel>LeastPrivilege</RunLevel>\n"
+            "    </Principal>\n"
+            "  </Principals>\n"
+            "  <Settings>\n"
+            "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n"
+            "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n"
+            "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n"
+            "    <AllowHardTerminate>true</AllowHardTerminate>\n"
+            "    <StartWhenAvailable>true</StartWhenAvailable>\n"
+            "    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>\n"
+            "    <AllowStartOnDemand>true</AllowStartOnDemand>\n"
+            "    <Enabled>true</Enabled>\n"
+            "    <Hidden>false</Hidden>\n"
+            "    <RunOnlyIfIdle>false</RunOnlyIfIdle>\n"
+            "    <WakeToRun>false</WakeToRun>\n"
+            "    <ExecutionTimeLimit>PT72H</ExecutionTimeLimit>\n"
+            "    <Priority>7</Priority>\n"
+            "  </Settings>\n"
+            '  <Actions Context="Author">\n'
+            "    <Exec>\n"
+            f"      <Command>{esc(executable)}</Command>\n"
+            f"      <Arguments>{esc(arguments)}</Arguments>\n"
+            "    </Exec>\n"
+            "  </Actions>\n"
+            "</Task>\n"
+        )
+
     def _register_windows_task(self, account_id, run_time, label=None):
-        """schtasks /Create the daily task for one account at run_time."""
-        cmd = self._autostart_command(account_id)
-        args = [
-            "schtasks",
-            "/Create",
-            "/TN",
-            self._windows_task_name(account_id),
-            "/TR",
-            cmd,
-            "/SC",
-            "DAILY",
-            "/ST",
-            run_time,
-            "/F",
-        ]
+        """
+        Register a daily scheduled task via XML import.
+
+        Why XML instead of `schtasks /SC DAILY /ST HH:MM` flags: the
+        flag form doesn't expose StartWhenAvailable, so a trigger that
+        fires while the machine is off is silently skipped forever.
+        The XML form lets us flip StartWhenAvailable=true so a missed
+        trigger catches up at next boot — same behavior as systemd's
+        Persistent=true on the Linux side.
+        """
+        import tempfile
+
+        xml_body = self._build_windows_task_xml(
+            account_id, run_time, label or account_id
+        )
+
+        # schtasks /XML reads the task definition from disk; UTF-16 is
+        # the encoding Task Scheduler expects (the XML decl says so and
+        # schtasks refuses UTF-8 without a BOM on some Windows builds).
+        fd, xml_path = tempfile.mkstemp(suffix=".xml", prefix="autorewarder-task-")
         try:
-            result = subprocess.run(args, capture_output=True, text=True)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(xml_body.encode("utf-16"))
+
+            result = subprocess.run(
+                [
+                    "schtasks",
+                    "/Create",
+                    "/TN",
+                    self._windows_task_name(account_id),
+                    "/XML",
+                    xml_path,
+                    "/F",
+                ],
+                capture_output=True,
+                text=True,
+            )
             if result.returncode != 0:
                 self.log(
                     f"[ERROR] schtasks create failed for {label or account_id}: "
@@ -760,6 +876,11 @@ class AutoRewarderAPI:
         except Exception as e:
             self.log(f"[ERROR] Failed to register Windows task: {e}")
             return False
+        finally:
+            try:
+                os.remove(xml_path)
+            except OSError:
+                pass
 
     def _remove_windows_task(self, account_id):
         """schtasks /Delete an account's daily task (idempotent)."""

@@ -577,11 +577,11 @@ function open_settings_modal() {
     if (startup && !startup.supported) {
       startupRow.classList.add('row-disabled');
       startupToggle.disabled = true;
-      startupHint.textContent = 'Available on Windows only.';
+      startupHint.textContent = 'Available on Windows and Linux only.';
     } else {
       startupRow.classList.remove('row-disabled');
       startupToggle.disabled = false;
-      startupHint.textContent = 'Launch AutoRewarder when you sign in.';
+      startupHint.textContent = "Run AutoRewarder automatically in the background every day, at each account's scheduled time.";
     }
 
     // Close-to-tray toggle — default to true if the API failed.
