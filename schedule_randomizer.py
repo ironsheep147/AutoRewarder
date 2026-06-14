@@ -17,10 +17,7 @@ PC_MIN = 30
 PC_MAX = 35
 MOBILE_MIN = 20
 MOBILE_MAX = 25
-DURATION_MIN = 4
-DURATION_MAX = 8
-QPH_MIN = 1
-QPH_MAX = 30
+QPH_BATCH_TARGET = 10
 DEFAULT_DEADLINE_HOUR = 23
 DEFAULT_DEADLINE_MINUTE = 0
 DEFAULT_SAFETY_BUFFER_MINUTES = 30
@@ -35,6 +32,10 @@ class AccountRoll:
     pc: int
     mobile: int
     duration: int
+
+    @property
+    def total_queries(self):
+        return self.pc + self.mobile
 
 
 def ceil_div(numerator, denominator):
@@ -88,7 +89,7 @@ def discover_ready_accounts(accounts_dir, rng):
                 schedule=schedule,
                 pc=rng.randint(PC_MIN, PC_MAX),
                 mobile=rng.randint(MOBILE_MIN, MOBILE_MAX),
-                duration=rng.randint(DURATION_MIN, DURATION_MAX),
+                duration=1,
             )
         )
     return rolls
@@ -97,10 +98,11 @@ def discover_ready_accounts(accounts_dir, rng):
 def available_duration_hours(now, deadline_hour, deadline_minute, safety_buffer_minutes):
     deadline = datetime.combine(now.date(), time(deadline_hour, deadline_minute))
     seconds = (deadline - now).total_seconds() - (safety_buffer_minutes * 60)
-    return max(0, int(seconds // 3600))
+    return max(0.0, seconds / 3600)
 
 
-def scale_durations(rolls, available_hours):
+def allocate_proportional_durations(rolls, available_hours):
+    """Allocate available hours across accounts by each account's query share."""
     if not rolls:
         return
 
@@ -109,19 +111,21 @@ def scale_durations(rolls, available_hours):
             roll.duration = 1
         return
 
-    total = sum(roll.duration for roll in rolls)
-    if total <= available_hours:
+    if available_hours <= len(rolls):
+        for roll in rolls:
+            roll.duration = 1
         return
 
-    minimum = DURATION_MIN if available_hours >= (len(rolls) * DURATION_MIN) else 1
-    for roll in rolls:
-        roll.duration = max(minimum, roll.duration)
+    total_queries = sum(roll.total_queries for roll in rolls)
+    if total_queries <= 0:
+        for roll in rolls:
+            roll.duration = 1
+        return
 
-    while sum(roll.duration for roll in rolls) > available_hours:
-        candidates = [roll for roll in rolls if roll.duration > minimum]
-        if not candidates:
-            break
-        max(candidates, key=lambda roll: roll.duration).duration -= 1
+    for roll in rolls:
+        exact = (available_hours * roll.total_queries) / total_queries
+        duration = max(1.0, exact)
+        roll.duration = math.floor(duration * 100) / 100
 
 
 def randomize_account_schedules(
@@ -141,7 +145,7 @@ def randomize_account_schedules(
     budget = available_duration_hours(
         now, deadline_hour, deadline_minute, safety_buffer_minutes
     )
-    scale_durations(rolls, budget)
+    allocate_proportional_durations(rolls, budget)
 
     changes = []
     for roll in rolls:
@@ -152,20 +156,21 @@ def randomize_account_schedules(
             "queries_mobile": roll.schedule.get("queries_mobile"),
         }
 
-        total_queries = roll.pc + roll.mobile
-        qph = clamp(ceil_div(total_queries, roll.duration), QPH_MIN, QPH_MAX)
         roll.schedule["queries_pc"] = roll.pc
         roll.schedule["queries_mobile"] = roll.mobile
         roll.schedule["runDuration"] = roll.duration
-        roll.schedule["queriesPerHour"] = qph
+        roll.schedule["queriesPerHour"] = QPH_BATCH_TARGET
         roll.meta["schedule"] = roll.schedule
         write_json(roll.meta_path, roll.meta)
 
         new = {
             "runDuration": roll.duration,
-            "queriesPerHour": qph,
+            "queriesPerHour": QPH_BATCH_TARGET,
             "queries_pc": roll.pc,
             "queries_mobile": roll.mobile,
+            "effectiveQueriesPerHour": round(
+                roll.total_queries / max(1, roll.duration), 2
+            ),
         }
         changes.append({"account_id": roll.account_id, "old": old, "new": new})
 
@@ -203,7 +208,8 @@ def main():
             f"PC {old['queries_pc']} -> {new['queries_pc']}, "
             f"mobile {old['queries_mobile']} -> {new['queries_mobile']}, "
             f"duration {old['runDuration']}h -> {new['runDuration']}h, "
-            f"QPH {old['queriesPerHour']} -> {new['queriesPerHour']}"
+            f"QPH {old['queriesPerHour']} -> {new['queriesPerHour']} "
+            f"(effective {new['effectiveQueriesPerHour']}/h)"
         )
     return 0
 
