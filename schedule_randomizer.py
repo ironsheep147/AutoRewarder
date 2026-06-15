@@ -17,7 +17,10 @@ PC_MIN = 30
 PC_MAX = 35
 MOBILE_MIN = 20
 MOBILE_MAX = 25
-QPH_BATCH_TARGET = 10
+QPH_MIN = 12
+QPH_MAX = 24
+QPH_JITTER = 3
+DURATION_JITTER_RATIO = 0.10
 DEFAULT_DEADLINE_HOUR = 23
 DEFAULT_DEADLINE_MINUTE = 0
 DEFAULT_SAFETY_BUFFER_MINUTES = 30
@@ -124,8 +127,40 @@ def allocate_proportional_durations(rolls, available_hours):
 
     for roll in rolls:
         exact = (available_hours * roll.total_queries) / total_queries
-        duration = max(1.0, exact)
-        roll.duration = math.floor(duration * 100) / 100
+        roll.duration = max(1.0, exact)
+
+
+def randomize_durations_within_budget(rolls, available_hours, rng):
+    """Jitter allocated durations while keeping the total inside the daily budget."""
+    if not rolls or available_hours <= len(rolls):
+        for roll in rolls:
+            roll.duration = math.floor(max(1.0, roll.duration) * 100) / 100
+        return
+
+    jittered = []
+    for roll in rolls:
+        multiplier = rng.uniform(
+            1.0 - DURATION_JITTER_RATIO, 1.0 + DURATION_JITTER_RATIO
+        )
+        jittered.append(max(1.0, roll.duration * multiplier))
+
+    extra_hours = sum(duration - 1.0 for duration in jittered)
+    target_extra_hours = max(0.0, available_hours - len(rolls))
+    if extra_hours > 0:
+        scale = target_extra_hours / extra_hours
+        adjusted = [1.0 + ((duration - 1.0) * scale) for duration in jittered]
+    else:
+        adjusted = [1.0 for _ in jittered]
+
+    for roll, duration in zip(rolls, adjusted):
+        roll.duration = math.floor(max(1.0, duration) * 100) / 100
+
+
+def randomized_queries_per_hour(roll, rng):
+    """Choose a bounded QPH that varies batch size without changing query totals."""
+    effective_qph = roll.total_queries / max(1.0, float(roll.duration))
+    jitter = rng.randint(-QPH_JITTER, QPH_JITTER)
+    return clamp(round(effective_qph) + jitter, QPH_MIN, QPH_MAX)
 
 
 def randomize_account_schedules(
@@ -146,6 +181,7 @@ def randomize_account_schedules(
         now, deadline_hour, deadline_minute, safety_buffer_minutes
     )
     allocate_proportional_durations(rolls, budget)
+    randomize_durations_within_budget(rolls, budget, rng)
 
     changes = []
     for roll in rolls:
@@ -156,16 +192,17 @@ def randomize_account_schedules(
             "queries_mobile": roll.schedule.get("queries_mobile"),
         }
 
+        qph = randomized_queries_per_hour(roll, rng)
         roll.schedule["queries_pc"] = roll.pc
         roll.schedule["queries_mobile"] = roll.mobile
         roll.schedule["runDuration"] = roll.duration
-        roll.schedule["queriesPerHour"] = QPH_BATCH_TARGET
+        roll.schedule["queriesPerHour"] = qph
         roll.meta["schedule"] = roll.schedule
         write_json(roll.meta_path, roll.meta)
 
         new = {
             "runDuration": roll.duration,
-            "queriesPerHour": QPH_BATCH_TARGET,
+            "queriesPerHour": qph,
             "queries_pc": roll.pc,
             "queries_mobile": roll.mobile,
             "effectiveQueriesPerHour": round(
