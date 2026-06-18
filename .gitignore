@@ -15,3 +15,8 @@ venv/
 
 # Local runtime logs
 logs/
+
+# Generated/local query data
+assets/queries.json
+assets/queries.base.json
+assets/queries.update.json
