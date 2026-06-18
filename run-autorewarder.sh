@@ -3,7 +3,7 @@ set -u
 
 APP_DIR="$HOME/AutoRewarder"
 LOG_DIR="$APP_DIR/logs"
-LOCK_FILE="/tmp/autorewarder.lock"
+LOCK_FILE="${LOCK_FILE:-/tmp/autorewarder.lock}"
 
 mkdir -p "$LOG_DIR"
 
@@ -100,6 +100,11 @@ sync_fork_if_new_release() {
       echo "ERROR: Upstream release sync failed. Not running AutoRewarder."
       exit 1
     }
+
+    echo "Updating search queries from Google Trends..."
+    if ! python3 -u update_queries.py update --mode combine --timeout 60; then
+      echo "WARNING: Query update failed. Continuing with existing queries."
+    fi
 
     echo "Randomizing account schedules..."
     python3 -u schedule_randomizer.py

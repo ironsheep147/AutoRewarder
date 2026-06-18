@@ -3,7 +3,7 @@ set -u
 
 APP_DIR="${APP_DIR:-$HOME/AutoRewarder}"
 LOG_DIR="$APP_DIR/logs"
-LOCK_FILE="${LOCK_FILE:-/tmp/autorewarder-random.lock}"
+LOCK_FILE="${LOCK_FILE:-/tmp/autorewarder.lock}"
 
 START_HOUR="${START_HOUR:-6}"
 END_HOUR="${END_HOUR:-23}"
