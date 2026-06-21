@@ -11,6 +11,39 @@ mkdir -p "$LOG_DIR"
 find "$LOG_DIR" -type f -name "autorewarder-*.log" -mtime +7 -delete 2>/dev/null || true
 
 LOG_FILE="$LOG_DIR/autorewarder-$(date +%F).log"
+RANDOM_WAIT_MAX_SECONDS="${AUTOREWARDER_RANDOM_WAIT_MAX_SECONDS:-5800}"
+
+random_wait_seconds() {
+  if [ -n "${AUTOREWARDER_RANDOM_WAIT_SECONDS:-}" ]; then
+    echo "$AUTOREWARDER_RANDOM_WAIT_SECONDS"
+    return 0
+  fi
+
+  if ! [[ "$RANDOM_WAIT_MAX_SECONDS" =~ ^[0-9]+$ ]] || [ "$RANDOM_WAIT_MAX_SECONDS" -le 0 ]; then
+    echo 0
+    return 0
+  fi
+
+  echo $((RANDOM % RANDOM_WAIT_MAX_SECONDS))
+}
+
+wait_random_after_updates() {
+  local wait_seconds
+
+  wait_seconds="$(random_wait_seconds)"
+  if ! [[ "$wait_seconds" =~ ^[0-9]+$ ]]; then
+    echo "WARNING: Invalid random wait seconds: $wait_seconds. Skipping wait."
+    return 0
+  fi
+
+  if [ "$wait_seconds" -le 0 ]; then
+    echo "Random wait skipped (0 seconds)."
+    return 0
+  fi
+
+  echo "Waiting $wait_seconds seconds before running AutoRewarder..."
+  sleep "$wait_seconds"
+}
 
 latest_main_release_tag() {
   git describe --tags --match "v[0-9]*" --abbrev=0 main 2>/dev/null || true
@@ -105,6 +138,8 @@ sync_fork_if_new_release() {
     if ! python3 -u update_queries.py update --mode combine --timeout 60; then
       echo "WARNING: Query update failed. Continuing with existing queries."
     fi
+
+    wait_random_after_updates
 
     echo "Randomizing account schedules..."
     python3 -u schedule_randomizer.py

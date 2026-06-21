@@ -7,7 +7,7 @@ import math
 import os
 import random
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from src.config import ACCOUNTS_DIR
@@ -17,11 +17,12 @@ PC_MIN = 30
 PC_MAX = 35
 MOBILE_MIN = 20
 MOBILE_MAX = 25
-QPH_MIN = 12
-QPH_MAX = 24
+QPH_MIN = 10
+QPH_MAX = 25
 QPH_JITTER = 3
-DURATION_JITTER_RATIO = 0.10
-DEFAULT_DEADLINE_HOUR = 23
+DURATION_MIN_HOURS = 1.75
+DURATION_MAX_HOURS = 3
+DEFAULT_DEADLINE_HOUR = 24
 DEFAULT_DEADLINE_MINUTE = 0
 DEFAULT_SAFETY_BUFFER_MINUTES = 30
 
@@ -99,19 +100,17 @@ def discover_ready_accounts(accounts_dir, rng):
 
 
 def available_duration_hours(now, deadline_hour, deadline_minute, safety_buffer_minutes):
-    deadline = datetime.combine(now.date(), time(deadline_hour, deadline_minute))
+    if deadline_hour == 24 and deadline_minute == 0:
+        deadline = datetime.combine(now.date() + timedelta(days=1), time(0, 0))
+    else:
+        deadline = datetime.combine(now.date(), time(deadline_hour, deadline_minute))
     seconds = (deadline - now).total_seconds() - (safety_buffer_minutes * 60)
     return max(0.0, seconds / 3600)
 
 
-def allocate_proportional_durations(rolls, available_hours):
-    """Allocate available hours across accounts by each account's query share."""
+def allocate_random_durations(rolls, available_hours, rng):
+    """Pick faster per-account durations while fitting inside today's budget."""
     if not rolls:
-        return
-
-    if available_hours <= 0:
-        for roll in rolls:
-            roll.duration = 1
         return
 
     if available_hours <= len(rolls):
@@ -119,38 +118,23 @@ def allocate_proportional_durations(rolls, available_hours):
             roll.duration = 1
         return
 
-    total_queries = sum(roll.total_queries for roll in rolls)
-    if total_queries <= 0:
-        for roll in rolls:
-            roll.duration = 1
-        return
+    desired = [rng.uniform(DURATION_MIN_HOURS, DURATION_MAX_HOURS) for _ in rolls]
+    desired_total = sum(desired)
 
-    for roll in rolls:
-        exact = (available_hours * roll.total_queries) / total_queries
-        roll.duration = max(1.0, exact)
-
-
-def randomize_durations_within_budget(rolls, available_hours, rng):
-    """Jitter allocated durations while keeping the total inside the daily budget."""
-    if not rolls or available_hours <= len(rolls):
-        for roll in rolls:
-            roll.duration = math.floor(max(1.0, roll.duration) * 100) / 100
-        return
-
-    jittered = []
-    for roll in rolls:
-        multiplier = rng.uniform(
-            1.0 - DURATION_JITTER_RATIO, 1.0 + DURATION_JITTER_RATIO
-        )
-        jittered.append(max(1.0, roll.duration * multiplier))
-
-    extra_hours = sum(duration - 1.0 for duration in jittered)
-    target_extra_hours = max(0.0, available_hours - len(rolls))
-    if extra_hours > 0:
-        scale = target_extra_hours / extra_hours
-        adjusted = [1.0 + ((duration - 1.0) * scale) for duration in jittered]
+    if desired_total <= available_hours:
+        adjusted = desired
+    elif available_hours >= len(rolls) * DURATION_MIN_HOURS:
+        base = DURATION_MIN_HOURS
+        desired_extra = sum(duration - base for duration in desired)
+        target_extra = available_hours - (len(rolls) * base)
+        scale = target_extra / desired_extra if desired_extra > 0 else 0
+        adjusted = [base + ((duration - base) * scale) for duration in desired]
     else:
-        adjusted = [1.0 for _ in jittered]
+        base = 1.0
+        desired_extra = sum(duration - base for duration in desired)
+        target_extra = available_hours - len(rolls)
+        scale = target_extra / desired_extra if desired_extra > 0 else 0
+        adjusted = [base + ((duration - base) * scale) for duration in desired]
 
     for roll, duration in zip(rolls, adjusted):
         roll.duration = math.floor(max(1.0, duration) * 100) / 100
@@ -180,8 +164,7 @@ def randomize_account_schedules(
     budget = available_duration_hours(
         now, deadline_hour, deadline_minute, safety_buffer_minutes
     )
-    allocate_proportional_durations(rolls, budget)
-    randomize_durations_within_budget(rolls, budget, rng)
+    allocate_random_durations(rolls, budget, rng)
 
     changes = []
     for roll in rolls:
