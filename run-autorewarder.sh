@@ -53,6 +53,14 @@ latest_available_release_tag() {
   git tag -l "v[0-9]*" --sort=-v:refname | head -n 1
 }
 
+has_blocking_local_changes() {
+  git status --porcelain --untracked-files=no -- . ':!assets/queries.json' | grep -q .
+}
+
+restore_generated_query_changes() {
+  git restore -- assets/queries.json 2>/dev/null || true
+}
+
 version_gt() {
   local newer="$1"
   local older="$2"
@@ -90,10 +98,11 @@ sync_fork_if_new_release() {
     return 0
   fi
 
-  if ! git diff --quiet || ! git diff --cached --quiet; then
+  if has_blocking_local_changes; then
     echo "ERROR: Working tree has local changes. Resolve them before syncing."
     return 1
   fi
+  restore_generated_query_changes
 
   original_branch="$(git branch --show-current)"
   if [ "$original_branch" != "autorun" ]; then
