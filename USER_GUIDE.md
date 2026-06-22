@@ -2,6 +2,7 @@
 
 Welcome! This guide will help you get started with AutoRewarder and explain all its features. No programming knowledge required.
 
+> [!NOTE]
 > **For screenshots and demo, see the [Screenshots & Demo](README.md#screenshots--demo) section in the README.**
 
 ---
@@ -86,11 +87,13 @@ Adding another account is slightly different, so please follow these steps:
 <img src="assets/screenshots/new_sign_in/sign_in_2.png" width="400">
 <img src="assets/screenshots/new_sign_in/sign_in_1.png" width="400">
 
-> **Important:** Go to the Rewards dashboard and accept terms and cookies for the new account to make sure it's fully set up.
+> [!IMPORTANT]
+> Go to the Rewards dashboard and accept terms and cookies for the new account to make sure it's fully set up.
 
 7. Close the browser window when done
 
-> **Note:** Repeat this to add more accounts.
+> [!NOTE]
+> Repeat this to add more accounts.
 
 ---
 
@@ -107,7 +110,8 @@ Adding another account is slightly different, so please follow these steps:
 7. The terminal-like window below shows what's happening in real-time
 8. To interrupt the run at any time, click the **"Stop"** button — the browser will close cleanly and no orphan processes are left behind
 
-**Tip:** Closing the main window sends AutoRewarder to the system tray. Use the tray icon to reopen the window or choose **Exit** to fully close the app.
+> [!TIP]
+> Closing the main window sends AutoRewarder to the system tray. Use the tray icon to reopen the window or choose **Exit** to fully close the app.
 
 ### What's Happening?
 
@@ -124,7 +128,7 @@ Adding another account is slightly different, so please follow these steps:
 
 If a new version is available, AutoRewarder can show an update notification and a download link.
 
-#### Daily tasks only
+### Daily tasks only
 
 If you've already done your searches manually (or just want to clean up the dashboard quickly), enable the **"Daily tasks only"** toggle before starting. The run skips both Bing search phases and goes straight to the Rewards dashboard to harvest the Daily Set + More Activities cards.
 
@@ -160,6 +164,9 @@ When enabled, AutoRewarder uses your operating system's native task scheduler (W
 
 To disable automated background runs, turn off **Enable Background Auto-Run** or disable scheduling for specific accounts.
 
+> [!TIP]
+> **For Multi-Account Users:** If you have multiple accounts configured, it is **highly recommended to stagger their run times**. Since accounts have independent OS tasks, setting them to the exact same time will launch them at the same time, which spikes RAM/CPU usage and can look suspicious to Microsoft (if from the same IP).
+
 ### System Tray & Application Exit
 By default, clicking the "X" on the main window sends AutoRewarder to the system tray. This allows the application to remain active for background tasks.
 
@@ -181,7 +188,8 @@ For background runs (Autostart or CLI mode) where there's no visible window, use
 
 <img src="assets/screenshots/tasks.jpg" width="400">
 
-> If you see the process using some CPU and Network, it means it's currently performing searches!
+> [!NOTE]
+> If you see the process using some CPU and Network, it means it's currently performing searches.
 
 ### Scheduled runs
 
@@ -199,10 +207,11 @@ You can use scheduling in two ways:
 
 *(Note: If the Schedule toggle is OFF, manual GUI runs will always use the classic run).*
 
+> [!WARNING]
 > **Safety First:** If your `QUERIES / HOUR` setting and `RUN DURATION` conflict (for example, setting 30 QPH for 90 total but a long 9-hour duration), the bot will prioritize the **Run duration**. It will stretch your searches over the entire time period to look like a natural human user and keep your account safe.
 
-> [!WARNING]
-> **Important:** Make sure that your PC is connected to the internet and does not go to sleep while the bot is running.
+> [!IMPORTANT]
+> Make sure that your PC is connected to the internet and does not go to sleep while the bot is running.
 
 ---
 
@@ -229,7 +238,7 @@ C:\Users\[YourUsername]\AppData\Local\AutoRewarder\accounts\<account_id>\history
 
 You don't need to access this directly — use the History button in the app instead.
 
-## View background process logs
+### View background process logs
 
 If you want to see detailed logs of the background process (for debugging or monitoring), you can find them in the `background_log.txt` file located in the same user data folder:
 
@@ -305,29 +314,37 @@ If your issue isn't listed, please open an issue on GitHub or [contact me](mailt
 ## FAQ
 
 **Q: Is AutoRewarder safe?**
+
 A: AutoRewarder is safe to use on your computer. It uses a separate browser profile so your personal data is not affected.
 
 **Q: Why does it need Microsoft account authorization?**
+
 A: AutoRewarder uses Edge to perform searches. Selenium WebDriver (the automation tool) requires a real browser to work with Microsoft Rewards.
 
 **Q: Will this ban my Microsoft Rewards account?**
+
 A: Microsoft Rewards' Terms of Service prohibit automation. Use at your own risk.
 But AutoRewarder is designed to mimic human behavior with randomized delays and real search queries to reduce the risk of detection. However, there is always a possibility of account suspension if detected such as searching with Bing while AutoRewarder is running or running multiple sessions at the same time.
 Personaly I have been using it for almost 7 months without any issues.
 
 **Q: How many searches can I do per day?**
+
 A: You can run as many sessions as you want. The UI allows PC (0-130) and Mobile (0-99) per run, but Microsoft Rewards limits depend on region and account status.
 
 **Q: Why does it ask me to do First Setup?**
+
 A: First Setup creates a separate browser profile for each account. You only need to run it once per account.
 
 **Q: What if the app freezes?**
+
 A: You can force-close it (Ctrl+Alt+Delete → Task Manager → AutoRewarder → End Task). Your history/settings will be preserved.
 
 **Q: Why doesn't the app close when I click X?**
+
 A: Closing the window sends AutoRewarder to the system tray so it can keep running. Use **Exit** in the tray menu to fully close the app.
 
-**Q: Can I run this on Mac or Linux?** <br>
+**Q: Can I run this on Mac or Linux?**
+
 A: Currently, the pre-built installer and standalone executable are only available for Windows. The application can run on Linux, but it requires manual setup from the source code. A portable/executable version for Linux is not available at this time. Mac OS is not supported.
 
 ---
