@@ -80,7 +80,7 @@ return (function () {
       if (candidates.length < 14) {
         candidates.push(selectors[i] + ' => "' + (aria || txt).slice(0, 32) + '" [' + val + ']');
       }
-      if (val != null && val > 0) {
+      if (val != null && val >= 0) {
         return {
           value: val, via: selectors[i], candidates: candidates,
           url: location.href, title: document.title

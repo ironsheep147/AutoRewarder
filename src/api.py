@@ -90,6 +90,9 @@ class AutoRewarderAPI:
         self._driver = None
         self.is_driver_loading = False
         self._run_lock = threading.Lock()
+        # Serializes ad-hoc balance scrapes so concurrent refreshes can't open
+        # two drivers on the same Edge profile at once.
+        self._balance_lock = threading.Lock()
         # Set when the user clicks Stop. Long loops in search_engine and
         # daily_set poll this between iterations and bail out cleanly.
         self._stop_event = threading.Event()
@@ -1715,16 +1718,22 @@ class AutoRewarderAPI:
         up-to-date total. Runs every launch (not just the first); a failed read
         silently keeps the previously stored balance.
         """
-        if self.stats is None or self.account_meta is None:
+        # Pin to the account that owns this warmup driver. The scrape runs on a
+        # background thread, so a mid-scrape account switch could otherwise save
+        # this profile's balance into another account's stats.json.
+        stats = self.stats
+        meta = self.account_meta
+        account_id = self.account_manager.current_id()
+        if stats is None or meta is None or account_id is None:
             return
-        if not self.account_meta.is_first_setup_done():
+        if not meta.is_first_setup_done():
             return
 
         # Only animate the card on the first launch, when there's nothing to
         # show yet. On later launches a value is already displayed, so refresh
         # it silently in the background — no distracting shimmer on a number
         # that's already there.
-        animate = self.stats.get_stats()["balance"]["current"] is None
+        animate = stats.get_stats()["balance"]["current"] is None
 
         self.log("Refreshing your Rewards points balance…")
         if animate:
@@ -1740,7 +1749,10 @@ class AutoRewarderAPI:
                 "(keeping the last known total)."
             )
             return
-        self.stats.update_balance(balance)
+        # Skip if the user switched accounts while we were scraping.
+        if self.account_manager.current_id() != account_id:
+            return
+        stats.update_balance(balance)
         self._notify_stats_refresh()
 
     def refresh_balance(self):
@@ -1753,7 +1765,8 @@ class AutoRewarderAPI:
             dict: {"ok": True, "balance": int} on success, else
                   {"ok": False, "error": <reason>}.
         """
-        if self.account_manager.current_id() is None:
+        account_id = self.account_manager.current_id()
+        if account_id is None:
             return {"ok": False, "error": "no_account"}
         if self.account_meta is None or not self.account_meta.is_first_setup_done():
             return {"ok": False, "error": "setup_needed"}
@@ -1763,11 +1776,22 @@ class AutoRewarderAPI:
         if self._run_lock.locked() or self.is_driver_loading:
             return {"ok": False, "error": "busy"}
 
+        # Atomically claim the profile: the checks above are advisory, so a
+        # dedicated lock is what actually prevents two refreshes from opening a
+        # driver on the same Edge profile at once.
+        if not self._balance_lock.acquire(blocking=False):
+            return {"ok": False, "error": "busy"}
+
+        # Pin to the account that opened the driver so a concurrent account
+        # switch can't redirect this profile's balance to another account.
+        stats = self.stats
+        driver_manager = self.driver_manager
+
         self.log("Refreshing points balance…")
         self._set_stats_loading(True)
         driver = None
         try:
-            driver = self.driver_manager.setup_driver(headless=True)
+            driver = driver_manager.setup_driver(headless=True)
             balance = self._fetch_balance_with_driver(driver)
         except Exception as e:
             self.log(f"[WARNING] Balance refresh failed: {e}")
@@ -1779,6 +1803,7 @@ class AutoRewarderAPI:
                 except Exception:
                     pass
             self._set_stats_loading(False)
+            self._balance_lock.release()
 
         if balance is None:
             self.log("[INFO] Could not read the points balance from the rewards page.")
@@ -1792,7 +1817,10 @@ class AutoRewarderAPI:
                 "diag_error": info.get("error"),
             }
 
-        self.stats.update_balance(balance)
+        # Only persist + refresh the UI if we're still on the same account.
+        if stats is None or self.account_manager.current_id() != account_id:
+            return {"ok": False, "error": "account_changed"}
+        stats.update_balance(balance)
         self._notify_stats_refresh()
         self.log(f"Points balance updated: {balance:,}")
         return {"ok": True, "balance": balance}

@@ -114,7 +114,8 @@
 
     <!-- ==================== Stats card ==================== -->
     <section class="card stats-card" id="stats_card" role="button" tabindex="0"
-             title="Open the statistics dashboard" onclick="show_stats()">
+             title="Open the statistics dashboard" onclick="show_stats()"
+             onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); show_stats(); }">
       <div class="card-header">
         <div class="card-label">Stats</div>
         <span class="ghost-link" aria-hidden="true">
