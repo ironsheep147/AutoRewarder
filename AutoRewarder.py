@@ -69,8 +69,12 @@ if __name__ == "__main__":
             if other is not window:
                 try:
                     other.destroy()
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Don't re-raise: that would abort teardown and leave the
+                    # remaining windows open. Log to stdout (the main window is
+                    # being destroyed, so evaluate_js logging isn't reliable
+                    # here) and keep closing the rest.
+                    print(f"[WARNING] Could not close secondary window: {e}")
 
     if window is not None:
         window.events.closed += _destroy_secondary_windows

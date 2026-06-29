@@ -54,17 +54,17 @@ return (function () {
   //   <p class="pointsValue"><mee-rewards-counter-animation>
   //       <span aria-label="9 494 ">9 494</span> ...
   // The span's aria-label is the authoritative final value (its text content
-  // animates up from a lower number). We MUST scope to the balance component:
-  // the same .pointsValue markup is reused for "daily points", "streak", and
-  // "referral" tiles, so an unscoped .pointsValue could read the wrong number.
-  // #id_rc is the Bing SERP counter fallback when the dashboard isn't loaded.
+  // animates up from a lower number). Every selector MUST be scoped to the
+  // balance component: the same .pointsValue markup is reused for "daily
+  // points", "streak" and "referral" tiles, so an unscoped .pointsValue could
+  // read (and persist) the wrong number. #id_rc / #fly_id_rc are the Bing SERP
+  // rewards counter — a distinct element, not a decoy tile — used as a fallback
+  // when the dashboard isn't loaded.
   var selectors = [
     'mee-rewards-user-status-banner-balance .pointsValue span[aria-label]',
     'mee-rewards-user-status-banner-balance mee-rewards-counter-animation span',
     'mee-rewards-user-status-banner-balance .pointsValue',
     '#balanceToolTipDiv .pointsValue',
-    '.pointsValue span[aria-label]',
-    '.pointsValue',
     '#fly_id_rc', '#id_rc'
   ];
   var candidates = [];

@@ -421,6 +421,9 @@ function refresh_stats_ui() {
   const totalLabel = document.getElementById('stat_total_label');
 
   pywebview.api.get_stats().then(function (stats) {
+    // Drop a response that arrived after the user switched accounts, so stale
+    // data can't overwrite the card for the now-active account.
+    if (stats && stats.account && stats.account.id !== currentAccountId) return;
     if (!stats || !stats.derived) {
       if (totalEl) totalEl.textContent = '—';
       if (sessionEl) sessionEl.textContent = '—';

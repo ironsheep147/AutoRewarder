@@ -9,9 +9,9 @@ from .manager import (
 )
 
 __all__ = [
-    "StatsManager",
+    "POINTS_PER_CARD",
+    "POINTS_PER_SEARCH",
     "scrape_points_balance",
     "scrape_points_balance_debug",
-    "POINTS_PER_SEARCH",
-    "POINTS_PER_CARD",
+    "StatsManager",
 ]
