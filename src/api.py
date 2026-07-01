@@ -266,33 +266,56 @@ class AutoRewarderAPI:
             "text_select": True,
         }
 
-        pos = self._main_window_right_edge()
+        pos = self._dock_position(kwargs["width"], kwargs["height"])
         if pos is not None:
             kwargs["x"], kwargs["y"] = pos
 
         self._stats_window = webview.create_window(**kwargs)
 
-    def _main_window_right_edge(self):
+    def _dock_position(self, win_w, win_h):
         """
-        Return (x, y) screen coordinates just past the main window's right edge,
-        for docking a secondary window beside it. Returns None if the main
-        window isn't attached or its geometry can't be read.
+        Compute on-screen (x, y) to dock a secondary window beside the main one:
+        to its right if there's room, otherwise to its left, otherwise clamped
+        so the window stays fully within the screen work area (never off-screen).
+        Returns None if the main window isn't attached or its geometry can't be
+        read, so the caller falls back to the OS default position.
         """
         if self._webview_window is None:
             return None
         try:
             raw = self._webview_window.evaluate_js(
                 "JSON.stringify({"
-                "x: window.screenX, y: window.screenY, w: window.outerWidth"
+                "x: window.screenX, y: window.screenY, w: window.outerWidth,"
+                "sx: (screen.availLeft || 0), sy: (screen.availTop || 0),"
+                "sw: screen.availWidth, sh: screen.availHeight"
                 "})"
             )
             data = json.loads(raw) if raw else {}
-            x = int(data["x"]) + int(data["w"])
-            y = int(data["y"])
-            # A small gap reads more naturally than a pixel-perfect seam.
-            return x + 6, y
+            main_x = int(data["x"])
+            main_y = int(data["y"])
+            main_w = int(data["w"])
+            sx = int(data["sx"])
+            sy = int(data["sy"])
+            sw = int(data["sw"])
+            sh = int(data["sh"])
         except Exception:
             return None
+
+        gap = 6
+        right = main_x + main_w + gap
+        left = main_x - gap - win_w
+
+        if right + win_w <= sx + sw:
+            x = right  # fits to the right of the main window
+        elif left >= sx:
+            x = left  # otherwise dock to the left
+        else:
+            # Neither side fits cleanly — clamp so it stays fully on screen.
+            x = max(sx, min(right, sx + sw - win_w))
+
+        # Align with the main window's top, clamped to the work area.
+        y = max(sy, min(main_y, sy + sh - win_h))
+        return x, y
 
     def start_update_check(self):
         """Start a one-time background update check."""
