@@ -136,5 +136,9 @@ if __name__ == "__main__":
         icon.run_detached()
         return icon
 
-    _tray_icon = _install_tray(window) if close_to_tray else None
+    # Install the tray for its side effects (closing handler + detached icon
+    # thread). The returned icon keeps itself alive via run_detached(), so we
+    # don't need to hold a reference here.
+    if close_to_tray:
+        _install_tray(window)
     webview.start(icon=os.path.join(ASSETS_DIR, "icon.ico"))
