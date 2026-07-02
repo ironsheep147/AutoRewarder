@@ -20,7 +20,7 @@ import time
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
-DASHBOARD_URL = "https://rewards.bing.com"
+DASHBOARD_URL = "https://rewards.bing.com/dashboard"
 
 # Concatenate every streamed RSC chunk (`window.__next_f` is a list of
 # `[1, "<chunk>"]` entries) and pull out each `dailySetItems` array, returning

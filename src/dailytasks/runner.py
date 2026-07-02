@@ -41,8 +41,11 @@ SECTIONS = (
 ANY_CARD_SELECTOR = ", ".join(sel for _, sel in SECTIONS)
 
 # Both the legacy and the new (Next.js) dashboards live at this URL; a migrated
-# account is redirected to the new /dashboard automatically.
+# account is redirected to the new /dashboard automatically. The legacy Angular
+# dashboard renders at the root; the new Next.js dashboard lives at /dashboard,
+# so auto-detection probes the root first and falls back to /dashboard.
 DASHBOARD_URL = "https://rewards.bing.com"
+NEW_DASHBOARD_URL = "https://rewards.bing.com/dashboard"
 
 # JS booleans used to tell which dashboard actually rendered (for variant="auto").
 # The legacy dashboard exposes `mee-rewards-*` Angular custom elements; the new
@@ -372,16 +375,12 @@ class DailySet:
         """
         Load the dashboard and report which variant rendered: "legacy" or "new".
 
-        Navigates to DASHBOARD_URL, waits until either dashboard's signature is
-        present, and returns "legacy" for the mee-rewards-* DOM or "new" for the
-        Next.js app. Falls back to "legacy" if neither is detected (the legacy
-        path fails loudly, which is the safer default for an unknown page).
+        Probes the root (legacy Angular dashboard) first; if neither signature
+        appears there, retries at /dashboard (the new Next.js app, which the root
+        may not redirect to for a headless session). Returns "legacy" for the
+        mee-rewards-* DOM or "new" for the Next.js app, defaulting to "legacy" if
+        neither is detected (the legacy path fails loudly — the safer default).
         """
-        try:
-            driver.get(DASHBOARD_URL)
-        except Exception as e:
-            self._log(f"[WARNING] Could not open the dashboard for detection: {e}")
-            return "legacy"
 
         def _ready(d):
             try:
@@ -391,18 +390,26 @@ class DailySet:
             except Exception:
                 return False
 
-        try:
-            WebDriverWait(driver, 15).until(_ready)
-        except TimeoutException:
-            pass
+        for url in (DASHBOARD_URL, NEW_DASHBOARD_URL):
+            try:
+                driver.get(url)
+            except Exception as e:
+                self._log(f"[WARNING] Could not open {url} for detection: {e}")
+                continue
 
-        try:
-            if driver.execute_script(_IS_LEGACY_JS):
-                return "legacy"
-            if driver.execute_script(_IS_NEW_JS):
-                return "new"
-        except Exception:
-            pass
+            try:
+                WebDriverWait(driver, 15).until(_ready)
+            except TimeoutException:
+                pass
+
+            try:
+                if driver.execute_script(_IS_LEGACY_JS):
+                    return "legacy"
+                if driver.execute_script(_IS_NEW_JS):
+                    return "new"
+            except Exception:
+                pass
+
         return "legacy"
 
     def _perform_legacy(self, driver, human, stop_event=None):
