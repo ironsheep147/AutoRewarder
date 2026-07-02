@@ -92,7 +92,7 @@ class UpdateQueriesTests(unittest.TestCase):
             ],
         )
 
-    def test_combine_uses_base_as_source_and_dedupes_case_insensitively(self):
+    def test_combine_preserves_existing_generated_queries(self):
         with tempfile.TemporaryDirectory() as tmp:
             queries_path = Path(tmp) / "queries.json"
             base_path = Path(tmp) / "queries.base.json"
@@ -108,7 +108,7 @@ class UpdateQueriesTests(unittest.TestCase):
 
             self.assertEqual(
                 read_queries(queries_path),
-                ["new trend", "NASA & Space", "baseline query"],
+                ["new trend", "old generated", "NASA & Space", "baseline query"],
             )
             self.assertEqual(result.added_count, 1)
             self.assertFalse(result.created_base)
@@ -132,9 +132,9 @@ class UpdateQueriesTests(unittest.TestCase):
 
             self.assertEqual(
                 read_queries(queries_path),
-                ["new trend", "NASA & Space", "baseline query"],
+                ["new trend", "old generated", "NASA & Space", "baseline query"],
             )
-            self.assertEqual(result.total_count, 3)
+            self.assertEqual(result.total_count, 4)
             self.assertEqual(result.added_count, 1)
 
     def test_first_update_creates_base_from_current_queries(self):

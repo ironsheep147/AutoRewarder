@@ -348,14 +348,17 @@ def update_queries_file(queries_path, base_path, trend_queries, mode="combine"):
         output = trend_queries
         added_count = len(trend_queries)
     else:
+        current_queries = read_queries_file(queries_path)
         base_queries = read_queries_file(base_path)
-        base_keys = {query.casefold() for query in base_queries}
+        existing_keys = {
+            query.casefold() for query in [*current_queries, *base_queries]
+        }
         new_trends = [
-            query for query in trend_queries if query.casefold() not in base_keys
+            query for query in trend_queries if query.casefold() not in existing_keys
         ]
-        output = [*new_trends, *base_queries]
+        output = [*new_trends, *current_queries, *base_queries]
         added_count = sum(
-            1 for query in trend_queries if query.casefold() not in base_keys
+            1 for query in trend_queries if query.casefold() not in existing_keys
         )
 
     output = dedupe_queries(output)
