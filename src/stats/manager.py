@@ -33,7 +33,9 @@ POINTS_PER_CARD = 10
 _DAILY_KEEP = 90
 
 # JS executed on rewards.bing.com (or a Bing SERP) to read the user's current
-# available-points balance. Tries a series of known selectors and returns an
+# available-points balance. Works on both the legacy mee-rewards-* dashboard
+# (DOM selectors) and the new Next.js dashboard (RSC payload in window.__next_f).
+# Tries a series of known selectors and returns an
 # object {value, via, candidates}. `value` is the first plausible integer found
 # (thousand separators stripped) or null; `candidates` is a small sample of
 # what each selector matched, logged when value is null so the real (locale-
@@ -88,6 +90,39 @@ return (function () {
       }
     }
   }
+  // New (Next.js) dashboard: none of the legacy mee-rewards-* nodes exist. The
+  // available-points balance is streamed into the RSC payload (window.__next_f)
+  // as "availablePoints":<int> / "balance":<int> (the ProfileUpdate value), not
+  // rendered into any stable DOM node. Read it from there. On the legacy
+  // dashboard or a Bing SERP __next_f is absent, so this block is a no-op.
+  try {
+    if (window.__next_f) {
+      var parts = [];
+      for (var k = 0; k < window.__next_f.length; k++) {
+        var e = window.__next_f[k];
+        if (Array.isArray(e)) { if (typeof e[1] === 'string') parts.push(e[1]); }
+        else if (typeof e === 'string') { parts.push(e); }
+      }
+      var blob = parts.join('');
+      // Prefer availablePoints; fall back to balance. Take the last match so a
+      // client-refreshed value wins over an earlier server-rendered one.
+      var keys = ['availablePoints', 'balance'];
+      for (var ki = 0; ki < keys.length; ki++) {
+        var re = new RegExp('"' + keys[ki] + '"\\s*:\\s*(\\d+)', 'g');
+        var m, last = null;
+        while ((m = re.exec(blob)) !== null) { last = parseInt(m[1], 10); }
+        if (last != null && isFinite(last) && last >= 0) {
+          if (candidates.length < 14) {
+            candidates.push('__next_f.' + keys[ki] + ' => [' + last + ']');
+          }
+          return {
+            value: last, via: 'new-dashboard:' + keys[ki], candidates: candidates,
+            url: location.href, title: document.title
+          };
+        }
+      }
+    }
+  } catch (eNext) { /* fall through to null */ }
   return {
     value: null, via: null, candidates: candidates,
     url: location.href, title: document.title
