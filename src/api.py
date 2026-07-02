@@ -1775,31 +1775,46 @@ class AutoRewarderAPI:
         except Exception:
             pass
 
-        try:
-            driver.get("https://rewards.bing.com")
-        except TimeoutException:
-            pass  # scrape whatever managed to render
-        except Exception as e:
-            self._last_balance_debug = {"error": str(e)[:120]}
-            return None
-
-        # Give the SPA a beat to mount before the first read.
-        time.sleep(2.5)
+        # Try the dashboard root first (legacy dashboard + the new dashboard when
+        # migrated accounts are redirected there), then the explicit /dashboard
+        # path used by the new Next.js app in case the root doesn't render it.
+        urls = ["https://rewards.bing.com", "https://rewards.bing.com/dashboard"]
 
         attempts = max(1, attempts)
         self._last_balance_debug = {}
-        for _ in range(attempts):
-            info = scrape_points_balance_debug(driver)
-            self._last_balance_debug = info
-            value = info.get("value")
-            if isinstance(value, int) and value >= 0:
-                # No log here — the caller emits a single user-facing line, so
-                # a scrape+update pair doesn't read as a duplicate.
-                return value
-            time.sleep(1.5)
 
-        # Not found. Details are kept in _last_balance_debug for the dashboard's
-        # on-demand refresh diagnostic; nothing is logged to the activity feed.
+        for url in urls:
+            try:
+                driver.get(url)
+            except TimeoutException:
+                pass  # scrape whatever managed to render
+            except Exception as e:
+                self._last_balance_debug = {"error": str(e)[:120], "url": url}
+                continue
+
+            # Give the SPA a beat to mount before the first read.
+            time.sleep(2.5)
+
+            for _ in range(attempts):
+                info = scrape_points_balance_debug(driver)
+                self._last_balance_debug = info
+                value = info.get("value")
+                if isinstance(value, int) and value >= 0:
+                    # No log here — the caller emits a single user-facing line, so
+                    # a scrape+update pair doesn't read as a duplicate.
+                    return value
+                time.sleep(1.5)
+
+        # Not found on any URL. Surface the diagnostic to the activity feed so a
+        # failure can be debugged from the logs (which page did we land on, what
+        # did the selectors match), then also keep it in _last_balance_debug for
+        # the dashboard's on-demand refresh diagnostic.
+        info = self._last_balance_debug or {}
+        self.log(
+            "[WARNING] Balance not found — "
+            f"url={info.get('url')!r} title={info.get('title')!r} "
+            f"via={info.get('via')!r} candidates={info.get('candidates') or []}"
+        )
         return None
 
     def _refresh_balance_on_launch(self, driver):

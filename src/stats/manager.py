@@ -67,6 +67,10 @@ return (function () {
     'mee-rewards-user-status-banner-balance mee-rewards-counter-animation span',
     'mee-rewards-user-status-banner-balance .pointsValue',
     '#balanceToolTipDiv .pointsValue',
+    // New (Next.js) dashboard: the "Points disponibles" card links to /redeem
+    // and shows the balance in a .text-pageHeader node. Scoped to that card so
+    // we don't pick the member-name header (same class, different anchor).
+    'a[href="/redeem"] .text-pageHeader',
     '#fly_id_rc', '#id_rc'
   ];
   var candidates = [];
