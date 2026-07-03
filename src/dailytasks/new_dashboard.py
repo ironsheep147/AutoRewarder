@@ -66,6 +66,60 @@ try {
 } catch (e) { return []; }
 """
 
+# DOM fallback: read today's daily-set activities straight from the rendered
+# `#dailyset` section when the RSC JSON isn't available. The section holds only
+# today's cards, each an <a> pointing at the Bing search that credits it. We
+# best-effort detect completion from a small set of localized "done" words; when
+# unsure we treat the card as incomplete (re-opening a completed daily search is
+# harmless).
+_DOM_DAILY_SET_JS = r"""
+try {
+  var out = [];
+  var root = document.getElementById('dailyset');
+  if (!root) return out;
+  var doneWords = ['terminé','termine','completed','complete','done','erledigt',
+    'abgeschlossen','completado','completada','completato','concluído','voltooid',
+    'terminado','fait'];
+  var links = root.querySelectorAll('a[href]');
+  for (var i = 0; i < links.length; i++) {
+    var a = links[i];
+    var href = a.href || a.getAttribute('href') || '';
+    if (href.indexOf('bing.com') < 0 && href.indexOf('/search') < 0) continue;
+    var txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    var low = txt.toLowerCase();
+    var done = false;
+    for (var d = 0; d < doneWords.length; d++) {
+      if (low.indexOf(doneWords[d]) >= 0) { done = true; break; }
+    }
+    out.push({ destination: href, title: txt.slice(0, 60), isCompleted: done, date: null });
+  }
+  return out;
+} catch (e) { return []; }
+"""
+
+# Diagnostic snapshot logged when no activities are found, so a failure can be
+# understood from the logs (did the RSC chunk stream in? is the section there?).
+_DIAG_JS = r"""
+try {
+  var chunks = window.__next_f || [];
+  var parts = [];
+  for (var n = 0; n < chunks.length; n++) {
+    var e = chunks[n];
+    if (Array.isArray(e)) { if (typeof e[1] === 'string') parts.push(e[1]); }
+    else if (typeof e === 'string') { parts.push(e); }
+  }
+  var blob = parts.join('');
+  return {
+    chunks: chunks.length,
+    blobLen: blob.length,
+    hasKey: blob.indexOf('"dailySetItems"') >= 0,
+    hasDailyset: !!document.getElementById('dailyset'),
+    url: location.href,
+    title: document.title
+  };
+} catch (e) { return { error: String(e).slice(0, 120) }; }
+"""
+
 
 class NewDashboardDailySet:
     """Daily Set handler for the new Next.js Microsoft Rewards dashboard."""
@@ -109,6 +163,38 @@ class NewDashboardDailySet:
             ):
                 by_id[key] = item
         return list(by_id.values())
+
+    def _read_items_polling(self, driver, attempts=8, delay=1.5):
+        """
+        Poll `_read_items` until items appear. The dashboard streams the daily-set
+        RSC chunk progressively, so it can land a beat after the page's load
+        event; a single read often races ahead of it.
+        """
+        for _ in range(max(1, attempts)):
+            items = self._read_items(driver)
+            if items:
+                return items
+            time.sleep(delay)
+        return []
+
+    def _read_items_dom(self, driver):
+        """Fallback: read today's daily-set activities from the rendered DOM."""
+        try:
+            raw = driver.execute_script(_DOM_DAILY_SET_JS)
+        except Exception as e:
+            self._log(f"[WARNING] Could not read new-dashboard DOM: {e}")
+            return []
+        if not isinstance(raw, list):
+            return []
+        return [it for it in raw if isinstance(it, dict) and it.get("destination")]
+
+    def _diagnostics(self, driver):
+        """Return a small diagnostic dict about the current page (for logging)."""
+        try:
+            info = driver.execute_script(_DIAG_JS)
+            return info if isinstance(info, dict) else {}
+        except Exception as e:
+            return {"error": str(e)[:120]}
 
     @staticmethod
     def _date_key(item):
@@ -186,12 +272,29 @@ class NewDashboardDailySet:
             # Brief settle so late RSC chunks finish streaming in.
             time.sleep(random.uniform(2, 3))
 
-            todays = self._todays_items(self._read_items(driver))
+            # Primary: poll the embedded RSC JSON (streams in progressively).
+            items = self._read_items_polling(driver)
+            source = "json"
+            # Fallback: read today's cards from the rendered #dailyset section.
+            if not items:
+                items = self._read_items_dom(driver)
+                source = "dom"
+
+            todays = self._todays_items(items)
             if not todays:
+                diag = self._diagnostics(driver)
                 self._log(
-                    "[WARNING] No daily-set activities found in the new dashboard."
+                    "[WARNING] No daily-set activities found in the new dashboard — "
+                    f"url={diag.get('url')!r} title={diag.get('title')!r} "
+                    f"chunks={diag.get('chunks')} blobLen={diag.get('blobLen')} "
+                    f"hasDailySetItems={diag.get('hasKey')} "
+                    f"hasDailysetSection={diag.get('hasDailyset')}"
                 )
                 return False
+
+            self._log(
+                f"New dashboard daily set: read {len(todays)} item(s) via {source}."
+            )
 
             incomplete = [it for it in todays if not it.get("isCompleted")]
             self._log(
