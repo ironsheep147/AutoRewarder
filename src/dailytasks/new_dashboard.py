@@ -142,11 +142,26 @@ try {
     var key = href.split('?')[0].split('#')[0];
     if (seen[key]) continue;
     seen[key] = 1;
-    var txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
-    var pts = 0; var pm = txt.match(/\+\s*(\d+)/); if (pm) pts = parseInt(pm[1], 10);
+    // Read points and progress from their own elements — NOT the card's
+    // concatenated textContent, where adjacent nodes like "+50" and "1/4" merge
+    // into "+501/4" and get misparsed. The informative-tint badge shows points
+    // to earn; the success badge shows points already earned on a done quest.
+    var pts = 0;
+    var badge = a.querySelector('[class*="statusInformativeTintFg"]')
+             || a.querySelector('[class*="statusSuccess"]');
+    if (badge) {
+      var bm = (badge.textContent || '').match(/(\d+)/);
+      if (bm) pts = parseInt(bm[1], 10);
+    }
+    // Progress "N/M": the leaf node whose own text IS a fraction (never merged
+    // with the neighbouring points badge).
     var done = null, total = null;
-    var prog = txt.match(/(\d+)\s*\/\s*(\d+)/);
-    if (prog) { done = parseInt(prog[1], 10); total = parseInt(prog[2], 10); }
+    var nodes = a.querySelectorAll('*');
+    for (var k = 0; k < nodes.length; k++) {
+      if (nodes[k].children.length) continue;
+      var pm = (nodes[k].textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
+      if (pm) { done = parseInt(pm[1], 10); total = parseInt(pm[2], 10); break; }
+    }
     var tEl = a.querySelector('.text-globalBody2Strong') || a.querySelector('p');
     var title = tEl ? (tEl.textContent || '').replace(/\s+/g, ' ').trim() : '';
     out.push({ url: key, title: title.slice(0, 80), points: pts, done: done, total: total });
@@ -170,11 +185,17 @@ try {
     if ((el.getAttribute('aria-disabled') || '') === 'true') continue;
     if ((el.getAttribute('data-disabled') || '') === 'true') continue;
     if (el.hasAttribute('disabled')) continue;
-    var href = el.getAttribute('href') || '';
+    // For an <a> el.href is the resolved absolute URL, matching Selenium's
+    // get_attribute('href') used to relocate it; a <span role="link"> has no
+    // .href property so we keep its raw attribute (also what Selenium returns).
+    var href = el.href || el.getAttribute('href') || '';
     if (!href) continue;
     var row = el.closest('div');
     var tEl = row ? row.querySelector('h3, .text-globalBody2Strong') : null;
     var title = tEl ? (tEl.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    // The heading ends with a call-to-action sentence (e.g. "... Click to
+    // complete."); keep only the first sentence. Language-independent.
+    title = title.split('. ')[0].trim();
     out.push({ destination: href, title: title.slice(0, 80) });
   }
   return out;
@@ -309,6 +330,24 @@ class NewDashboardDailySet:
                 if (btn.get_attribute("aria-expanded") or "").lower() == "false":
                     driver.execute_script("arguments[0].click();", btn)
                     time.sleep(random.uniform(0.6, 1.2))
+            except Exception:
+                continue
+
+    def _expand_all(self, driver):
+        """
+        Expand every collapsed react-aria disclosure on the page. Used on /earn,
+        where quest punchcards live in their own collapsible panel (not
+        #moreactivities) and would otherwise stay unrendered/undiscovered.
+        """
+        try:
+            triggers = driver.find_elements(By.CSS_SELECTOR, "button[slot='trigger']")
+        except Exception:
+            return
+        for btn in triggers:
+            try:
+                if (btn.get_attribute("aria-expanded") or "").lower() == "false":
+                    driver.execute_script("arguments[0].click();", btn)
+                    time.sleep(random.uniform(0.3, 0.6))
             except Exception:
                 continue
 
@@ -513,7 +552,7 @@ class NewDashboardDailySet:
             pass
 
     def _wait_for(self, driver, selector, timeout=15):
-        """Wait until `selector` matches an element on the page."""
+        """Wait until `selector` matches an element. Returns True if it appeared."""
 
         def _ready(d):
             try:
@@ -527,8 +566,9 @@ class NewDashboardDailySet:
 
         try:
             WebDriverWait(driver, timeout).until(_ready)
+            return True
         except TimeoutException:
-            pass
+            return False
 
     # -- Top-level entry point -------------------------------------------------
 
@@ -647,25 +687,34 @@ class NewDashboardDailySet:
         try:
             driver.get(EARN_URL)
             self._wait_ready(driver)
-            time.sleep(random.uniform(1.5, 2.5))
         except Exception as e:
             self._log(f"[WARNING] Could not open the earn page for quests: {e}")
             return
 
-        # Expand collapsible sections so lazily-rendered quest cards materialize.
-        self._expand_section(driver, "moreactivities")
-        time.sleep(random.uniform(0.5, 1.0))
-
-        try:
-            quests = driver.execute_script(_QUESTS_JS)
-        except Exception as e:
-            self._log(f"[WARNING] Could not read quests: {e}")
-            return
-        if not isinstance(quests, list) or not quests:
+        # Quest cards sit in a collapsible panel and stream in progressively.
+        # Expand every collapsed section, then poll discovery until the set of
+        # quests stops growing so a late-rendered card isn't missed.
+        self._expand_all(driver)
+        quests = []
+        for _ in range(6):
+            time.sleep(random.uniform(0.8, 1.4))
+            try:
+                current = driver.execute_script(_QUESTS_JS) or []
+            except Exception as e:
+                self._log(f"[WARNING] Could not read quests: {e}")
+                return
+            if isinstance(current, list) and len(current) > len(quests):
+                quests = current
+            elif quests:
+                break
+        if not quests:
             self._log("Quests: none found.")
             return
 
-        # Skip quests already fully complete (progress N/N).
+        # Keep only quests that award points and aren't finished. Points-earning
+        # quests carry a "+N" badge on their card; promo quests (partner offers,
+        # e.g. Spotify/MasterClass) show none and are skipped, as are quests
+        # already complete (progress N/N).
         pending = []
         for q in quests:
             if not isinstance(q, dict):
@@ -673,16 +722,19 @@ class NewDashboardDailySet:
             url = q.get("url")
             if not isinstance(url, str) or "/earn/quest/" not in url:
                 continue
+            pts = q.get("points")
+            if not isinstance(pts, int) or pts <= 0:
+                continue
             d, t = q.get("done"), q.get("total")
             if isinstance(d, int) and isinstance(t, int) and t > 0 and d >= t:
                 continue
             pending.append(q)
 
         if not pending:
-            self._log("Quests: all complete.")
+            self._log("Quests: no points-earning quest to do.")
             return
 
-        self._log(f"Quests: {len(pending)} incomplete quest(s) to check.")
+        self._log(f"Quests: {len(pending)} points-earning quest(s) to check.")
         main_tab = driver.current_window_handle
         opened = 0
         for q in pending:
@@ -694,10 +746,20 @@ class NewDashboardDailySet:
             try:
                 driver.get(url)
                 self._wait_ready(driver)
-                time.sleep(random.uniform(1.5, 2.5))
             except Exception as e:
                 self._log(f"[WARNING] Could not open quest '{title}': {e}")
                 continue
+
+            # The task list streams in after hydration; _wait_ready only gates on
+            # the Next.js payload existing. Wait for a task heading to render
+            # before reading, so a not-yet-loaded list isn't mistaken for
+            # "nothing to do" (which would skip an unlocked task).
+            if not self._wait_for(
+                driver, '[class*="rewardsTableAltBg"] h3', timeout=15
+            ):
+                self._log(f"Quest '{title}': task list did not render — skipping.")
+                continue
+            time.sleep(random.uniform(1.0, 1.8))
 
             try:
                 tasks = driver.execute_script(_QUEST_TASKS_JS)
