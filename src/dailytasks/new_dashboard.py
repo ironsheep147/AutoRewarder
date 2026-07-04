@@ -575,10 +575,18 @@ class NewDashboardDailySet:
     def perform(self, driver, human, stop_event=None):
         """
         Run the new-dashboard point-earning tasks: the Daily Set (/dashboard),
-        the "earn-page" activities and the quests (/earn). Returns the Daily Set
-        outcome (used to mark today done); the earn/quest passes are best-effort.
+        claiming pending points, then the "earn-page" activities and the quests
+        (/earn). Returns the Daily Set outcome (used to mark today done); the
+        claim/earn/quest passes are best-effort.
         """
         daily_ok = self._run_daily_set(driver, human, stop_event=stop_event)
+        if stop_event is not None and stop_event.is_set():
+            return daily_ok
+        try:
+            self._run_claim(driver, human, stop_event=stop_event)
+        except Exception as e:
+            if not (stop_event is not None and stop_event.is_set()):
+                self._log(f"[WARNING] Claim pass failed: {e}")
         if stop_event is not None and stop_event.is_set():
             return daily_ok
         try:
@@ -594,6 +602,110 @@ class NewDashboardDailySet:
             if not (stop_event is not None and stop_event.is_set()):
                 self._log(f"[WARNING] Quest pass failed: {e}")
         return daily_ok
+
+    def _run_claim(self, driver, human, stop_event=None):
+        """
+        Claim pending points from the dashboard "ready to claim" tile.
+
+        New-dashboard points must be claimed before they count toward the balance
+        (and they expire ~1 month after being earned). The tile shows a pending
+        count with a danger dot; clicking it opens a flyout whose primary button
+        claims them. Best-effort and language-independent — matched by the
+        coins-icon asset, the danger-status token and the brand-button token,
+        never by localized labels.
+        """
+        self._log("Checking for claimable points (new dashboard)")
+        try:
+            driver.get(DASHBOARD_URL)
+            self._wait_ready(driver)
+            time.sleep(random.uniform(1.5, 2.5))
+        except Exception as e:
+            self._log(f"[WARNING] Could not open the dashboard to claim: {e}")
+            return
+
+        # The claim tile: a clickable (non-link) card with the coins icon and a
+        # danger-status dot (pending points). The balance tile also shows a coins
+        # icon but is an <a href="/redeem"> with no danger dot, so it's excluded.
+        card = None
+        pending = ""
+        try:
+            icons = driver.find_elements(
+                By.CSS_SELECTOR, 'img[src*="CoinsTransparent"]'
+            )
+        except Exception:
+            icons = []
+        for icon in icons:
+            try:
+                anc = icon.find_element(
+                    By.XPATH,
+                    "./ancestor::*[contains(@class,'cursor-pointer')][1]",
+                )
+                if anc.tag_name.lower() == "a":
+                    continue
+                if not anc.find_elements(By.CSS_SELECTOR, '[class*="statusDanger"]'):
+                    continue
+                card = anc
+                try:
+                    pending = anc.find_element(
+                        By.CSS_SELECTOR, ".text-pageHeader"
+                    ).text.strip()
+                except Exception:
+                    pending = ""
+                break
+            except Exception:
+                continue
+
+        if card is None:
+            self._log("No claimable points.")
+            return
+
+        self._log(f"Opening claim flyout (pending: {pending or '?'} points).")
+        try:
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center'});", card
+            )
+            time.sleep(random.uniform(0.4, 0.8))
+            human.click_element(card, scroll_into_view=False)
+        except Exception as e:
+            if stop_event is not None and stop_event.is_set():
+                return
+            self._log(f"[WARNING] Could not open the claim flyout: {e}")
+            return
+
+        # Wait for the flyout, then click its primary (brand) button — not the
+        # close (slot="close") or the "how it works" disclosure (slot="trigger").
+        if not self._wait_for(driver, '[class*="bg-flyout"]', timeout=10):
+            self._log("[WARNING] Claim flyout did not open.")
+            return
+        time.sleep(random.uniform(0.8, 1.4))
+        try:
+            flyout = driver.find_element(By.CSS_SELECTOR, '[class*="bg-flyout"]')
+            btn = None
+            for b in flyout.find_elements(
+                By.CSS_SELECTOR, 'button[class*="bgCtrlBrandRest"]'
+            ):
+                if b.get_attribute("slot"):
+                    continue
+                if not b.is_enabled():
+                    continue
+                btn = b
+                break
+        except Exception as e:
+            self._log(f"[WARNING] Could not find the claim button: {e}")
+            return
+
+        if btn is None:
+            self._log("[WARNING] Claim button not found in the flyout.")
+            return
+        try:
+            human.click_element(btn, scroll_into_view=True)
+            time.sleep(random.uniform(1.5, 2.5))
+            self.last_totals["attempted"] = self.last_totals.get("attempted", 0) + 1
+            self._log("Clicked claim — pending points submitted.")
+        except Exception as e:
+            if stop_event is not None and stop_event.is_set():
+                return
+            self._log(f"[WARNING] Could not click the claim button: {e}")
 
     def _run_more_activities(self, driver, human, stop_event=None):
         """
@@ -831,18 +943,12 @@ class NewDashboardDailySet:
             items = self._read_items_polling(driver)
             source = "json"
             # Fallback: read today's cards from the rendered #dailyset section.
+            # window.__next_f is normally drained after hydration, so the JSON
+            # path is expected to be empty here — the DOM is the real source at
+            # runtime. A genuine failure (neither path yields cards) is reported
+            # by the "No daily-set activities found" warning below, with the same
+            # diagnostics, so there's nothing to log on this routine fallback.
             if not items:
-                # Always log why the JSON path came up empty, even when the DOM
-                # fallback succeeds, so we can tell "chunk not streamed yet" from
-                # "extraction bug" without another round-trip.
-                diag = self._diagnostics(driver)
-                self._log(
-                    "[INFO] New-dashboard JSON had no daily-set items — "
-                    f"chunks={diag.get('chunks')} blobLen={diag.get('blobLen')} "
-                    f"hasDailySetItems={diag.get('hasKey')} "
-                    f"hasDailysetSection={diag.get('hasDailyset')} "
-                    f"url={diag.get('url')!r}"
-                )
                 items = self._read_items_dom(driver)
                 source = "dom"
 
