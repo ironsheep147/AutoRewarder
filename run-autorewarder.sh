@@ -14,6 +14,9 @@ find "$LOG_DIR" -type f -name "autorewarder-*.log" -mtime +7 -delete 2>/dev/null
 LOG_FILE="$LOG_DIR/autorewarder-$(date +%F).log"
 POINTS_BASELINE_FILE="${AUTOREWARDER_POINTS_BASELINE_FILE:-$LOG_DIR/points-baseline-$(date +%F).json}"
 RANDOM_WAIT_MAX_SECONDS="${AUTOREWARDER_RANDOM_WAIT_MAX_SECONDS:-5800}"
+AUTOREWARDER_SCHEDULE_DEADLINE_HOUR="${AUTOREWARDER_SCHEDULE_DEADLINE_HOUR:-24}"
+AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE="${AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE:-0}"
+AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES="${AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES:-180}"
 
 random_wait_seconds() {
   if [ -n "${AUTOREWARDER_RANDOM_WAIT_SECONDS:-}" ]; then
@@ -261,7 +264,10 @@ sync_fork_if_new_release() {
     wait_random_after_updates
 
     echo "Randomizing account schedules..."
-    python3 -u schedule_randomizer.py
+    python3 -u schedule_randomizer.py \
+      --deadline-hour "$AUTOREWARDER_SCHEDULE_DEADLINE_HOUR" \
+      --deadline-minute "$AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE" \
+      --safety-buffer-minutes "$AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES"
 
     log_points_report before "$POINTS_BASELINE_FILE" "$(date +%F)"
 
