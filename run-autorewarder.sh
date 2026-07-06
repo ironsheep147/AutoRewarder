@@ -2,6 +2,7 @@
 set -u
 
 APP_DIR="$HOME/AutoRewarder"
+DATA_DIR="${AUTOREWARDER_DATA_DIR:-$HOME/.local/share/AutoRewarder}"
 LOG_DIR="$APP_DIR/logs"
 LOCK_FILE="${LOCK_FILE:-/tmp/autorewarder.lock}"
 
@@ -11,6 +12,7 @@ mkdir -p "$LOG_DIR"
 find "$LOG_DIR" -type f -name "autorewarder-*.log" -mtime +7 -delete 2>/dev/null || true
 
 LOG_FILE="$LOG_DIR/autorewarder-$(date +%F).log"
+POINTS_BASELINE_FILE="${AUTOREWARDER_POINTS_BASELINE_FILE:-$LOG_DIR/points-baseline-$(date +%F).json}"
 RANDOM_WAIT_MAX_SECONDS="${AUTOREWARDER_RANDOM_WAIT_MAX_SECONDS:-5800}"
 
 random_wait_seconds() {
@@ -43,6 +45,114 @@ wait_random_after_updates() {
 
   echo "Waiting $wait_seconds seconds before running AutoRewarder..."
   sleep "$wait_seconds"
+}
+
+log_points_report() {
+  local mode="$1"
+  local baseline_file="$2"
+  local today="$3"
+
+  python3 - "$mode" "$baseline_file" "$today" "$DATA_DIR" <<'PY'
+import json
+import os
+import sys
+
+mode, baseline_file, today, data_dir = sys.argv[1:5]
+accounts_path = os.path.join(data_dir, "accounts.json")
+
+
+def load_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def balance_for(account_id):
+    stats = load_json(
+        os.path.join(data_dir, "accounts", account_id, "stats.json"),
+        {},
+    )
+    balance = stats.get("balance", {}).get("current")
+    if isinstance(balance, int):
+        return balance
+    return None
+
+
+def daily_for(account_id):
+    stats = load_json(
+        os.path.join(data_dir, "accounts", account_id, "stats.json"),
+        {},
+    )
+    daily = stats.get("daily", {}).get(today, {})
+    return {
+        "pc": int(daily.get("pc", 0) or 0),
+        "mobile": int(daily.get("mobile", 0) or 0),
+        "cards": int(daily.get("cards", 0) or 0),
+        "runs": int(daily.get("runs", 0) or 0),
+    }
+
+
+def fmt(value):
+    if value is None:
+        return "unknown"
+    return f"{value:,}"
+
+
+accounts = load_json(accounts_path, [])
+if not isinstance(accounts, list):
+    accounts = []
+
+snapshot = {}
+for account in accounts:
+    account_id = account.get("id")
+    if account_id:
+        snapshot[account_id] = balance_for(account_id)
+
+if mode == "before":
+    if not os.path.exists(baseline_file):
+        os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
+        temp_file = baseline_file + ".tmp"
+        with open(temp_file, "w", encoding="utf-8") as file:
+            json.dump(snapshot, file, indent=2, sort_keys=True)
+        os.replace(temp_file, baseline_file)
+
+    print("Points before run:")
+    if not accounts:
+        print("  No accounts found.")
+    for account in accounts:
+        account_id = account.get("id")
+        name = account.get("label") or "Unknown account"
+        print(f"  {name}: {fmt(snapshot.get(account_id))}")
+    sys.exit(0)
+
+baseline = load_json(baseline_file, {})
+if not isinstance(baseline, dict):
+    baseline = {}
+
+print("Daily statistics:")
+if not accounts:
+    print("  No accounts found.")
+for account in accounts:
+    account_id = account.get("id")
+    name = account.get("label") or "Unknown account"
+    current = snapshot.get(account_id)
+    start = baseline.get(account_id)
+    daily = daily_for(account_id)
+
+    if isinstance(current, int) and isinstance(start, int):
+        points = f"points {current:,} ({current - start:+,} today)"
+    elif isinstance(current, int):
+        points = f"points {current:,} (today unknown)"
+    else:
+        points = "points unknown"
+
+    print(
+        f"  {name}: {points}, pc {daily['pc']}, mobile {daily['mobile']}, "
+        f"cards {daily['cards']}, runs {daily['runs']}"
+    )
+PY
 }
 
 latest_main_release_tag() {
@@ -153,9 +263,13 @@ sync_fork_if_new_release() {
     echo "Randomizing account schedules..."
     python3 -u schedule_randomizer.py
 
+    log_points_report before "$POINTS_BASELINE_FILE" "$(date +%F)"
+
     echo "Running AutoRewarder..."
     python3 -u AutoRewarder.py --headless
     exit_code="$?"
+
+    log_points_report after "$POINTS_BASELINE_FILE" "$(date +%F)"
 
     echo "AutoRewarder exited with code $exit_code"
     exit "$exit_code"
