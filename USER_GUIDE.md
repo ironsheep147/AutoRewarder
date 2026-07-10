@@ -325,7 +325,7 @@ If your issue isn't listed, please open an issue on GitHub.
 
 **Q: Is AutoRewarder safe?**
 
-A: AutoRewarder is safe to use. It uses a separate browser profile so your personal data is not affected.
+A: AutoRewarder is completely free of viruses and malware. The project is fully open-source, so you are welcome to inspect the code yourself. It also isolates its activity in a separate browser profile to protect your personal data.
 
 **Q: Will this ban my Microsoft Rewards account?**
 
@@ -350,7 +350,7 @@ A: Closing the window sends AutoRewarder to the system tray so it can keep runni
 
 **Q: Can I run this on Mac or Linux?**
 
-A: Currently, the pre-built installer and standalone executable are only available for Windows. The application can run on Linux, but it requires manual setup from the source code. Mac OS is not supported.
+A: Currently, the pre-built installer and standalone executable are only available for Windows. The application can run on Linux, but it requires manual setup from the source code. macOS is not supported.
 
 ---
 

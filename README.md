@@ -51,22 +51,33 @@ Clone this repo, create virtual environment, and run `python AutoRewarder.py`.
 
 | Perform Searches | App Demo |
 | :---: | :---: |
-|<img src="assets/screenshots/perform_demo.gif">|<img src="assets/screenshots/main_window_demo_3.4.gif">|
+|<img src="assets/screenshots/perform_demo.gif">|<img src="assets/screenshots/app_demo_v4.0.gif">|
 
-|Daily Sets| Tab Switching |
+| Daily Sets (New Dashboard) & Claim action | Tab Switching |
 | :---: | :---: |
-|<img src="assets/screenshots/daily_set.gif">|<img src="assets/screenshots/tab_perform.gif">|
+|<img src="assets/screenshots/daily_sets_demo_v4.0.gif">|<img src="assets/screenshots/tab_perform.gif">|
+
+<details>
+  <summary><b>View Legacy Dashboard Demo (click to expand)</b></summary>
+
+  <br>
+
+  | Daily Sets (Legacy Dashboard) |
+  | :---: |
+  |<img src="assets/screenshots/daily_set.gif">|
+
+</details>
 
 > <sub>*Demo is sped up for viewing purposes. Actual execution includes randomized delays and pauses to mimic human behavior.*</sub>
 
-| Main Window | Settings |
+| Main Window & Account Management | Settings |
 | :---: | :---: |
-| <img src="assets/screenshots/main_window_v3.4.png"> | <img src="assets/screenshots/settings_v3.4_1.png"> |
-| <img src="assets/screenshots/main_1.png"> | <img src="assets/screenshots/settings_v3.4_2.png"> |
+| <img src="assets/screenshots/main_window_v4.0.jpg"> | <img src="assets/screenshots/settings_1_v4.0.jpg"> |
+| <img src="assets/screenshots/account_management_v4.0.jpg"> | <img src="assets/screenshots/settings_2_v4.0.jpg"> |
 
-| History | Account Management |
+| History | Statistics Dashboard |
 | :---: | :---: |
-| <img src="assets/screenshots/history_window.png"> | <img src="assets/screenshots/accounts_v3.4.png"> |
+| <img src="assets/screenshots/history_window.png"> | <img src="assets/screenshots/stats_v4.0.jpg"> |
 
 ---
 
@@ -344,6 +355,6 @@ You are responsible for your own usage.
 
 ## Support
 
-If you found this project helpful and would like to support my work, you can buy me a coffee here:
+If you found this project helpful and would like to support it, you can buy me a coffee here:
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/safarsin)
