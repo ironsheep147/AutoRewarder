@@ -9,7 +9,8 @@ It sends at most one notification per event:
 - AutoRewarder missed its expected 4 AM start.
 - Internet went down during the day, then came back.
 - Today's log has `AutoRewarder exited with code` nonzero or `ERROR:`.
-- Today's log has `===== Started` but no `===== Finished` after `AUTOREWARDER_MAX_RUNTIME_MINUTES`.
+- For `run-random-accounts.sh`, today's log has `===== Started` but no `===== Finished` after the logged run window closes.
+- For `run-autorewarder.sh`, today's log has `===== Started` but no `===== Finished` after `AUTOREWARDER_MAX_RUNTIME_MINUTES`.
 
 It checks today's log, same as:
 
@@ -39,6 +40,12 @@ Keep system cron only for AutoRewarder run:
 
 ```cron
 0 4 * * * /home/ryan/AutoRewarder/run-random-accounts.sh
+```
+
+Defaults match `run-random-accounts.sh`: missed-start grace is 120 minutes, and stuck-run checks wait for the `Window: ... through ...` line in today's log. For `run-autorewarder.sh`, set:
+
+```bash
+AUTOREWARDER_RUN_SCRIPT=run-autorewarder.sh
 ```
 
 Optional fallback: set `AUTOREWARDER_NOTIFY_URL` for direct HTTP notification. If unset, script prints alert to stdout for Hermes.

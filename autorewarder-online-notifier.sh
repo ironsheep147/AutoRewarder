@@ -19,12 +19,14 @@ NOTIFIED_STUCK_FILE="$STATE_DIR/notified-stuck-run-date"
 
 EXPECTED_HOUR="${AUTOREWARDER_EXPECTED_HOUR:-4}"
 EXPECTED_MINUTE="${AUTOREWARDER_EXPECTED_MINUTE:-0}"
-START_GRACE_MINUTES="${AUTOREWARDER_START_GRACE_MINUTES:-10}"
+START_GRACE_MINUTES="${AUTOREWARDER_START_GRACE_MINUTES:-120}"
 MAX_RUNTIME_MINUTES="${AUTOREWARDER_MAX_RUNTIME_MINUTES:-240}"
+STUCK_GRACE_MINUTES="${AUTOREWARDER_STUCK_GRACE_MINUTES:-30}"
 NOTIFY_URL="${AUTOREWARDER_NOTIFY_URL:-}"
 PING_URL="${AUTOREWARDER_PING_URL:-https://www.google.com/generate_204}"
 TODAY_RUN_LOG="$LOG_DIR/autorewarder-$(date +%F).log"
-RUN_COMMAND='nohup ~/AutoRewarder/run-random-accounts.sh >/dev/null 2>&1 &'
+RUN_SCRIPT="${AUTOREWARDER_RUN_SCRIPT:-run-random-accounts.sh}"
+RUN_COMMAND="${AUTOREWARDER_RUN_COMMAND:-nohup ~/AutoRewarder/$RUN_SCRIPT >/dev/null 2>&1 &}"
 
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 
@@ -41,7 +43,7 @@ now_epoch() {
 }
 
 deadline_epoch() {
-  date -d "$(today) ${EXPECTED_HOUR}:${EXPECTED_MINUTE}:00 + ${START_GRACE_MINUTES} minutes" +%s
+  echo $(( $(date -d "$(today) ${EXPECTED_HOUR}:${EXPECTED_MINUTE}:00" +%s) + START_GRACE_MINUTES * 60 ))
 }
 
 online() {
@@ -84,8 +86,35 @@ run_failed_today() {
   grep -Eq "AutoRewarder exited with code [1-9][0-9]*|ERROR:" "$TODAY_RUN_LOG"
 }
 
+random_accounts_window_end() {
+  [ -f "$TODAY_RUN_LOG" ] || return 1
+  awk '
+    /^Window: / {
+      split($4, parts, ":")
+      if (parts[1] ~ /^[0-9]+$/ && parts[2] ~ /^[0-9]+$/) {
+        print parts[1] ":" parts[2]
+        exit
+      }
+    }
+  ' "$TODAY_RUN_LOG"
+}
+
+stuck_deadline_epoch() {
+  local window_end
+
+  if [ "$RUN_SCRIPT" = "run-random-accounts.sh" ]; then
+    window_end="$(random_accounts_window_end)"
+    if [ -n "$window_end" ]; then
+      echo $(( $(date -d "$(today) ${window_end}:00" +%s) + STUCK_GRACE_MINUTES * 60 ))
+      return 0
+    fi
+  fi
+
+  echo $(( $(date -d "$(today) ${EXPECTED_HOUR}:${EXPECTED_MINUTE}:00" +%s) + MAX_RUNTIME_MINUTES * 60 ))
+}
+
 mark_run_problems_if_needed() {
-  local date_today started_epoch max_end
+  local date_today max_end
   date_today="$(today)"
 
   if [ "$(now_epoch)" -ge "$(deadline_epoch)" ] && ! run_started_today; then
@@ -103,8 +132,7 @@ mark_run_problems_if_needed() {
   fi
 
   if run_started_today && ! run_finished_today; then
-    started_epoch="$(date -d "$(today) ${EXPECTED_HOUR}:${EXPECTED_MINUTE}:00" +%s)"
-    max_end=$(( started_epoch + MAX_RUNTIME_MINUTES * 60 ))
+    max_end="$(stuck_deadline_epoch)"
     if [ "$(now_epoch)" -ge "$max_end" ] && [ "$(cat "$STUCK_FILE" 2>/dev/null || true)" != "$date_today" ]; then
       printf '%s\n' "$date_today" > "$STUCK_FILE"
       log "Marked stuck run for $date_today"
@@ -151,7 +179,11 @@ record_offline_or_send_once() {
     message="$message AutoRewarder log shows failure."
   fi
   if [ -n "$stuck_date" ]; then
-    message="$message AutoRewarder log shows start but no finish after ${MAX_RUNTIME_MINUTES} minutes."
+    if [ "$RUN_SCRIPT" = "run-random-accounts.sh" ]; then
+      message="$message AutoRewarder log shows start but no finish after today's run window."
+    else
+      message="$message AutoRewarder log shows start but no finish after ${MAX_RUNTIME_MINUTES} minutes."
+    fi
   fi
   message="$message Check log with: tail -n 50 ~/AutoRewarder/logs/autorewarder-$(date +%F).log . Do you want to run it now? Command: $RUN_COMMAND"
 

@@ -73,6 +73,17 @@ if [ "$notify_count_before" != "$notify_count_after" ]; then
   exit 1
 fi
 
+rm -f "$WORK_DIR/data/state/"*
+cat > "$WORK_DIR/app/logs/autorewarder-$(date +%F).log" <<LOG
+===== Started $(date) PID 123 =====
+Window: 6:00 through 23:59
+LOG
+AUTOREWARDER_MAX_RUNTIME_MINUTES=1 bash "$SCRIPT_PATH"
+if [ -e "$WORK_DIR/data/state/stuck-run-date" ]; then
+  echo "random account run should not be marked stuck before its run window closes"
+  exit 1
+fi
+
 printf '%s\n' "$(date +%F)" > "$WORK_DIR/data/state/last-run-started"
 rm -f "$WORK_DIR/data/state/missed-run-date" "$WORK_DIR/data/state/notified-missed-run-date" "$WORK_DIR/data/state/notified-outage-id"
 FAKE_CURL_FAIL=1 bash "$SCRIPT_PATH"
