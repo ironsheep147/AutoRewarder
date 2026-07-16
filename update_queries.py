@@ -3,6 +3,7 @@
 import argparse
 import csv
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -16,6 +17,8 @@ DEFAULT_GEO = "US"
 DEFAULT_HOURS = 168
 DEFAULT_BROWSER = "edge"
 DEFAULT_TIMEOUT = 45
+MAX_QUERY_WORDS = 10
+MAX_TREND_TOPIC_QUERIES = 3
 TRENDS_URL = "https://trends.google.com/trending?geo={geo}&hours={hours}"
 BREAKDOWN_KEYS = {
     "trend breakdown",
@@ -48,7 +51,34 @@ def normalize_query(query):
 
 
 def is_clean_query(query):
-    return bool(query) and all(32 <= ord(character) <= 126 for character in query)
+    if not query or not all(32 <= ord(character) <= 126 for character in query):
+        return False
+    if not re.search(r"[A-Za-z]", query):
+        return False
+    if len(query) < 3:
+        return False
+    if len(query.split()) > MAX_QUERY_WORDS:
+        return False
+    if re.search(r"[A-Za-z]\.[A-Za-z]", query):
+        return False
+    return True
+
+def trend_topic_key(query):
+    words = re.findall(r"[A-Za-z0-9+]+", query.casefold())
+    if "worldcup" in words or ("world" in words and "cup" in words):
+        return "world cup"
+    return " ".join(words[:2]) if words else query.casefold()
+
+def limit_trend_topic_repetition(queries, max_per_topic=MAX_TREND_TOPIC_QUERIES):
+    counts = {}
+    output = []
+    for query in queries:
+        key = trend_topic_key(query)
+        if counts.get(key, 0) >= max_per_topic:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+        output.append(query)
+    return output
 
 
 def dedupe_queries(queries):
@@ -340,6 +370,7 @@ def update_queries_file(queries_path, base_path, trend_queries, mode="combine"):
         if is_clean_query(normalized_query):
             normalized_trends.append(normalized_query)
     trend_queries = dedupe_queries(normalized_trends)
+    trend_queries = limit_trend_topic_repetition(trend_queries)
     if not trend_queries:
         raise ValueError("No clean trend queries found")
 

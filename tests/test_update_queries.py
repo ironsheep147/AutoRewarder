@@ -67,6 +67,109 @@ class UpdateQueriesTests(unittest.TestCase):
             queries, ["NBA Finals", "Celtics-Lakers", "C++", "Google Trends"]
         )
 
+    def test_rejects_noisy_or_overlong_trend_queries(self):
+        rows = [
+            {
+                "Trend breakdown": (
+                    "b, 1, 333, world.cup final, "
+                    "where to watch england national football team vs argentina national football team"
+                )
+            }
+        ]
+
+        queries = update_queries.extract_queries_from_rows(rows)
+
+        self.assertEqual(queries, [])
+
+    def test_keeps_natural_search_punctuation(self):
+        rows = [
+            {
+                "Trend breakdown": (
+                    "O'Brien, NASA & Space, Celtics-Lakers, C++, "
+                    "how to make chocolate chip cookies"
+                )
+            }
+        ]
+
+        queries = update_queries.extract_queries_from_rows(rows)
+
+        self.assertEqual(
+            queries,
+            [
+                "O'Brien",
+                "NASA & Space",
+                "Celtics-Lakers",
+                "C++",
+                "how to make chocolate chip cookies",
+            ],
+        )
+
+    def test_combine_limits_repetitive_trend_topics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queries_path = Path(tmp) / "queries.json"
+            base_path = Path(tmp) / "queries.base.json"
+            write_queries(queries_path, ["old generated"])
+            write_queries(base_path, ["baseline query"])
+
+            result = update_queries.update_queries_file(
+                queries_path,
+                base_path,
+                [
+                    "world cup final",
+                    "world cup score",
+                    "world cup highlights",
+                    "world cup schedule",
+                    "world cup standings",
+                    "weather tomorrow",
+                ],
+                mode="combine",
+            )
+
+            self.assertEqual(
+                read_queries(queries_path),
+                [
+                    "world cup final",
+                    "world cup score",
+                    "world cup highlights",
+                    "weather tomorrow",
+                    "old generated",
+                    "baseline query",
+                ],
+            )
+            self.assertEqual(result.added_count, 4)
+
+    def test_combine_limits_event_alias_topics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queries_path = Path(tmp) / "queries.json"
+            base_path = Path(tmp) / "queries.base.json"
+            write_queries(queries_path, ["old generated"])
+            write_queries(base_path, ["baseline query"])
+
+            update_queries.update_queries_file(
+                queries_path,
+                base_path,
+                [
+                    "fifa world cup 2026",
+                    "world cup games today",
+                    "soccer world cup",
+                    "worldcup",
+                    "weather tomorrow",
+                ],
+                mode="combine",
+            )
+
+            self.assertEqual(
+                read_queries(queries_path),
+                [
+                    "fifa world cup 2026",
+                    "world cup games today",
+                    "soccer world cup",
+                    "weather tomorrow",
+                    "old generated",
+                    "baseline query",
+                ],
+            )
+
     def test_parses_google_trends_csv_rows(self):
         csv_text = (
             "Trends,Search volume,Trend breakdown\n"
