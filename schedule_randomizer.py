@@ -13,10 +13,8 @@ from pathlib import Path
 from src.config import ACCOUNTS_DIR
 
 
-PC_MIN = 30
-PC_MAX = 35
-MOBILE_MIN = 20
-MOBILE_MAX = 25
+SEARCH_TOTAL_MIN = 20
+SEARCH_TOTAL_MAX = 25
 QPH_MIN = 10
 QPH_MAX = 25
 QPH_JITTER = 3
@@ -68,6 +66,12 @@ def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, int(value)))
 
 
+def random_search_split(rng):
+    total = rng.randint(SEARCH_TOTAL_MIN, SEARCH_TOTAL_MAX)
+    pc = rng.randint(0, total)
+    return pc, total - pc
+
+
 def discover_ready_accounts(accounts_dir, rng):
     rolls = []
     for meta_path in sorted(Path(accounts_dir).glob("*/meta.json")):
@@ -85,14 +89,15 @@ def discover_ready_accounts(accounts_dir, rng):
         if not schedule.get("enabled"):
             continue
 
+        pc, mobile = random_search_split(rng)
         rolls.append(
             AccountRoll(
                 account_id=meta_path.parent.name,
                 meta_path=meta_path,
                 meta=meta,
                 schedule=schedule,
-                pc=rng.randint(PC_MIN, PC_MAX),
-                mobile=rng.randint(MOBILE_MIN, MOBILE_MAX),
+                pc=pc,
+                mobile=mobile,
                 duration=1,
             )
         )

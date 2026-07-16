@@ -10,10 +10,8 @@ END_HOUR="${END_HOUR:-23}"
 END_MINUTE="${END_MINUTE:-59}"
 ACCOUNT_LIMIT="${ACCOUNT_LIMIT:-5}"
 
-PC_MIN="${PC_MIN:-30}"
-PC_MAX="${PC_MAX:-45}"
-MOBILE_MIN="${MOBILE_MIN:-20}"
-MOBILE_MAX="${MOBILE_MAX:-30}"
+SEARCH_TOTAL_MIN="${SEARCH_TOTAL_MIN:-20}"
+SEARCH_TOTAL_MAX="${SEARCH_TOTAL_MAX:-25}"
 
 MIN_GAP_SECONDS="${MIN_GAP_SECONDS:-600}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -88,7 +86,7 @@ run_account() {
 {
   echo "===== Started $(date) PID $$ ====="
   echo "Window: ${START_HOUR}:00 through ${END_HOUR}:${END_MINUTE}"
-  echo "Counts: pc ${PC_MIN}-${PC_MAX}, mobile ${MOBILE_MIN}-${MOBILE_MAX}"
+  echo "Counts: total searches ${SEARCH_TOTAL_MIN}-${SEARCH_TOTAL_MAX}"
 
   cd "$APP_DIR" || {
     echo "ERROR: Cannot cd to $APP_DIR"
@@ -133,10 +131,11 @@ done
 total="${#accounts[@]}"
 for index in "${!accounts[@]}"; do
   account="${accounts[$index]}"
-  pc="$(rand_between "$PC_MIN" "$PC_MAX")"
-  mobile="$(rand_between "$MOBILE_MIN" "$MOBILE_MAX")"
+  search_total="$(rand_between "$SEARCH_TOTAL_MIN" "$SEARCH_TOTAL_MAX")"
+  pc="$(rand_between 0 "$search_total")"
+  mobile=$((search_total - pc))
 
-  echo "Running account $((index + 1))/$total: $account --pc $pc --mobile $mobile"
+  echo "Running account $((index + 1))/$total: $account --pc $pc --mobile $mobile (total $search_total)"
   run_account "$account" "$pc" "$mobile"
   exit_code="$?"
   echo "Account '$account' exited with code $exit_code"
