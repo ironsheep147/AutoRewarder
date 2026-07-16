@@ -5,8 +5,10 @@ APP_DIR="$HOME/AutoRewarder"
 DATA_DIR="${AUTOREWARDER_DATA_DIR:-$HOME/.local/share/AutoRewarder}"
 LOG_DIR="$APP_DIR/logs"
 LOCK_FILE="${LOCK_FILE:-/tmp/autorewarder.lock}"
+STATE_DIR="${AUTOREWARDER_STATE_DIR:-$DATA_DIR/state}"
+RUN_MARKER_FILE="$STATE_DIR/last-run-started"
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$STATE_DIR"
 
 # Delete logs older than 7 days
 find "$LOG_DIR" -type f -name "autorewarder-*.log" -mtime +7 -delete 2>/dev/null || true
@@ -244,6 +246,8 @@ sync_fork_if_new_release() {
     echo "ERROR: Cannot cd to $APP_DIR"
     exit 1
   }
+
+  date +%F > "$RUN_MARKER_FILE"
 
   (
     flock -n 9 || {
