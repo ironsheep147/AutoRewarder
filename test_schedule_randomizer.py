@@ -1,6 +1,6 @@
 import unittest
 
-from schedule_randomizer import SEARCH_TOTAL_MAX, SEARCH_TOTAL_MIN, random_search_split
+from schedule_randomizer import random_search_split
 
 
 class SearchSplitTests(unittest.TestCase):
@@ -12,19 +12,19 @@ class SearchSplitTests(unittest.TestCase):
             def randint(self, minimum, maximum):
                 self.calls.append((minimum, maximum))
                 if len(self.calls) == 1:
-                    return SEARCH_TOTAL_MAX
+                    return maximum
                 return maximum
 
         rng = FixedRng()
 
         pc, mobile = random_search_split(rng)
 
-        self.assertEqual((pc, mobile), (SEARCH_TOTAL_MAX, 0))
+        self.assertEqual((pc, mobile), (50, 0))
         self.assertEqual(
             rng.calls,
-            [(SEARCH_TOTAL_MIN, SEARCH_TOTAL_MAX), (0, SEARCH_TOTAL_MAX)],
+            [(40, 50), (0, 50)],
         )
-        self.assertGreaterEqual(pc + mobile, 20)
+        self.assertGreaterEqual(pc + mobile, 40)
 
 
 if __name__ == "__main__":

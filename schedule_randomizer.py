@@ -13,8 +13,8 @@ from pathlib import Path
 from src.config import ACCOUNTS_DIR
 
 
-SEARCH_TOTAL_MIN = 20
-SEARCH_TOTAL_MAX = 25
+SEARCH_TOTAL_MIN = 40
+SEARCH_TOTAL_MAX = 50
 QPH_MIN = 10
 QPH_MAX = 25
 QPH_JITTER = 3

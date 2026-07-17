@@ -60,6 +60,11 @@ random_wait_seconds() {
 wait_random_after_updates() {
   local wait_seconds
 
+  if [ "${AUTOREWARDER_SKIP_RANDOM_WAIT:-0}" = "1" ]; then
+    echo "Random pre-run wait skipped."
+    return 0
+  fi
+
   wait_seconds="$(random_wait_seconds)"
   if ! [[ "$wait_seconds" =~ ^[0-9]+$ ]]; then
     echo "WARNING: Invalid random wait seconds: $wait_seconds. Skipping wait."
