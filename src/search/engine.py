@@ -3,12 +3,20 @@
 import json
 import random
 import time
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.common.by import By
 
 from ..utils import human_typing
 from ..emulator import HumanBehavior
+
+
+SEARCH_METHODS = ("homepage", "address_bar")
+
+
+def choose_search_method(rng=random.choice):
+    return rng(SEARCH_METHODS)
 
 
 class SearchEngine:
@@ -130,9 +138,7 @@ class SearchEngine:
                 return successful
 
             try:
-                # Open Bing homepage
-                driver.get("https://www.bing.com")
-                time.sleep(random.uniform(4, 8))  # Random delay to mimic human behavior
+                search_method = choose_search_method()
 
                 searches_since_break += 1
 
@@ -161,16 +167,30 @@ class SearchEngine:
                     searches_since_break = 0
                     self._log(f"Next coffee break after {next_coffee_break} searches.")
 
-                # Find the search box, clear it
-                search_box = driver.find_element(By.NAME, "q")
-                search_box.clear()
-
                 # Log the search query in log area
-                self._log(f"Search #{i + 1}: {query}")
+                self._log(f"Search #{i + 1}: {query} ({search_method})")
 
-                # Type the query with human-like delays
-                human_typing(search_box, query)
-                search_box.send_keys(Keys.RETURN)  # Press Enter to search
+                if search_method == "address_bar":
+                    ActionChains(driver).key_down(Keys.CONTROL).send_keys("l").key_up(
+                        Keys.CONTROL
+                    ).perform()
+                    time.sleep(random.uniform(0.2, 0.8))
+                    for char in query:
+                        ActionChains(driver).send_keys(char).perform()
+                        time.sleep(random.uniform(0.05, 0.18))
+                    ActionChains(driver).send_keys(Keys.RETURN).perform()
+                else:
+                    # Open Bing homepage
+                    driver.get("https://www.bing.com")
+                    time.sleep(random.uniform(4, 8))  # Random delay to mimic human behavior
+
+                    # Find the search box, clear it
+                    search_box = driver.find_element(By.NAME, "q")
+                    search_box.clear()
+
+                    # Type the query with human-like delays
+                    human_typing(search_box, query)
+                    search_box.send_keys(Keys.RETURN)  # Press Enter to search
 
                 # Wait for result to load
                 time.sleep(random.uniform(2, 4))
