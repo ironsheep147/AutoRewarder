@@ -8,22 +8,26 @@ LOCK_FILE="${LOCK_FILE:-/tmp/autorewarder.lock}"
 STATE_DIR="${AUTOREWARDER_STATE_DIR:-$DATA_DIR/state}"
 RUN_MARKER_FILE="$STATE_DIR/last-run-started"
 
-START_HOUR="${START_HOUR:-6}"
+START_HOUR="${START_HOUR:-4}"
 END_HOUR="${END_HOUR:-23}"
 END_MINUTE="${END_MINUTE:-59}"
-ACCOUNT_LIMIT="${ACCOUNT_LIMIT:-5}"
+ACCOUNT_LIMIT=""
 
-SEARCH_TOTAL_MIN="${SEARCH_TOTAL_MIN:-20}"
-SEARCH_TOTAL_MAX="${SEARCH_TOTAL_MAX:-25}"
+SEARCH_TOTAL_MIN="${SEARCH_TOTAL_MIN:-40}"
+SEARCH_TOTAL_MAX="${SEARCH_TOTAL_MAX:-45}"
 
 MIN_GAP_SECONDS="${MIN_GAP_SECONDS:-300}"
 CHUNK_MIN="${CHUNK_MIN:-1}"
-CHUNK_MAX="${CHUNK_MAX:-3}"
+CHUNK_MAX="${CHUNK_MAX:-5}"
 WAIT_MIN_SECONDS="${WAIT_MIN_SECONDS:-$MIN_GAP_SECONDS}"
 WAIT_MAX_SECONDS="${WAIT_MAX_SECONDS:-1200}"
+
 DRY_RUN="${DRY_RUN:-0}"
 POINTS_BASELINE_FILE="${AUTOREWARDER_POINTS_BASELINE_FILE:-$LOG_DIR/points-baseline-$(date +%F).json}"
 RANDOM_WAIT_MAX_SECONDS="${AUTOREWARDER_RANDOM_WAIT_MAX_SECONDS:-5800}"
+AUTOREWARDER_SCHEDULE_DEADLINE_HOUR="${AUTOREWARDER_SCHEDULE_DEADLINE_HOUR:-24}"
+AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE="${AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE:-0}"
+AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES="${AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES:-180}"
 
 mkdir -p "$LOG_DIR" "$STATE_DIR"
 find "$LOG_DIR" -type f -name "autorewarder-*.log" -mtime +7 -delete 2>/dev/null || true
@@ -77,7 +81,9 @@ wait_random_after_updates() {
   fi
 
   echo "Waiting $wait_seconds seconds before running AutoRewarder..."
-  sleep "$wait_seconds"
+  if [ "$DRY_RUN" != "1" ]; then
+    sleep "$wait_seconds"
+  fi
 }
 
 log_points_report() {
@@ -290,10 +296,10 @@ shuffle_and_limit_accounts() {
 import random
 import sys
 
-limit = int(sys.argv[1])
+limit = int(sys.argv[1]) if sys.argv[1] else None
 accounts = [line.rstrip("\n") for line in sys.stdin if line.strip()]
 random.shuffle(accounts)
-for account in accounts[:limit]:
+for account in accounts[:limit] if limit else accounts:
     print(account)
 ' "$ACCOUNT_LIMIT"
 }
@@ -419,6 +425,7 @@ wait_between_chunks() {
   echo "Window: ${START_HOUR}:00 through ${END_HOUR}:${END_MINUTE}"
   echo "Counts: total searches ${SEARCH_TOTAL_MIN}-${SEARCH_TOTAL_MAX}"
   echo "Chunks: ${CHUNK_MIN}-${CHUNK_MAX}; waits: ${WAIT_MIN_SECONDS}-${WAIT_MAX_SECONDS}s"
+  echo "Schedule: deadline ${AUTOREWARDER_SCHEDULE_DEADLINE_HOUR}:${AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE} with ${AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES}min buffer"
 
   cd "$APP_DIR" || {
     echo "ERROR: Cannot cd to $APP_DIR"
@@ -433,82 +440,90 @@ wait_between_chunks() {
     exit 1
   }
 
-if [ "$DRY_RUN" = "1" ]; then
-  echo "DRY RUN: skipping upstream sync, query update, random pre-run wait, and points report."
-else
-  sync_fork_if_new_release || {
-    echo "ERROR: Upstream release sync failed. Not running AutoRewarder."
-    exit 1
-  }
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "DRY RUN: skipping upstream sync, query update, random pre-run wait, and points report."
+  else
+    sync_fork_if_new_release || {
+      echo "ERROR: Upstream release sync failed. Not running AutoRewarder."
+      exit 1
+    }
 
-  echo "Updating search queries from Google Trends..."
-  if ! python3 -u update_queries.py update --mode combine --timeout 60; then
-    echo "WARNING: Query update failed. Continuing with existing queries."
-  fi
-
-  wait_random_after_updates
-  log_points_report before "$POINTS_BASELINE_FILE" "$(date +%F)"
-fi
-
-now="$(date +%s)"
-start_epoch="$(today_epoch "$START_HOUR" 0)"
-end_epoch="$(today_epoch "$END_HOUR" "$END_MINUTE")"
-exit_code=0
-
-if [ "$now" -gt "$end_epoch" ]; then
-  echo "Current time is after today's run window. Nothing to run."
-  exit 0
-fi
-
-if [ "$now" -lt "$start_epoch" ]; then
-  wait_seconds=$((start_epoch - now))
-  echo "Waiting $wait_seconds seconds for the run window to open."
-  if [ "$DRY_RUN" != "1" ]; then
-    sleep "$wait_seconds"
-  fi
-  now="$start_epoch"
-fi
-
-mapfile -t accounts < <(load_accounts | shuffle_and_limit_accounts)
-if [ "${#accounts[@]}" -eq 0 ]; then
-  echo "No ready accounts found."
-  exit 0
-fi
-
-echo "Randomized account order:"
-for account in "${accounts[@]}"; do
-  echo "  - $account"
-done
-
-pc_left=()
-mobile_left=()
-for index in "${!accounts[@]}"; do
-  search_total="$(rand_between "$SEARCH_TOTAL_MIN" "$SEARCH_TOTAL_MAX")"
-  pc="$(rand_between 0 "$search_total")"
-  mobile=$((search_total - pc))
-  pc_left+=("$pc")
-  mobile_left+=("$mobile")
-
-  echo "Planned total for ${accounts[$index]}: pc $pc, mobile $mobile (total $search_total)"
-done
-
-while mapfile -t active < <(active_indices) && [ "${#active[@]}" -gt 0 ]; do
-  mapfile -t round < <(printf '%s\n' "${active[@]}" | shuffle_indices)
-  for index in "${round[@]}"; do
-    if [ $((pc_left[index] + mobile_left[index])) -le 0 ]; then
-      continue
+    echo "Updating search queries from Google Trends..."
+    if ! python3 -u update_queries.py update --mode combine --timeout 60; then
+      echo "WARNING: Query update failed. Continuing with existing queries."
     fi
-    run_account_chunk "$index"
-    mapfile -t active < <(active_indices)
-    wait_between_chunks "${#active[@]}"
-  done
-done
 
-if [ "$DRY_RUN" != "1" ]; then
-  log_points_report after "$POINTS_BASELINE_FILE" "$(date +%F)"
-fi
-echo "AutoRewarder exited with code $exit_code"
-exit "$exit_code"
+    wait_random_after_updates
+    log_points_report before "$POINTS_BASELINE_FILE" "$(date +%F)"
+  fi
+
+  now="$(date +%s)"
+  start_epoch="$(today_epoch "$START_HOUR" 0)"
+  end_epoch="$(today_epoch "$END_HOUR" "$END_MINUTE")"
+  exit_code=0
+
+  if [ "$now" -gt "$end_epoch" ]; then
+    echo "Current time is after today's run window. Nothing to run."
+    exit 0
+  fi
+
+  if [ "$now" -lt "$start_epoch" ]; then
+    wait_seconds=$((start_epoch - now))
+    echo "Waiting $wait_seconds seconds for the run window to open."
+    if [ "$DRY_RUN" != "1" ]; then
+      sleep "$wait_seconds"
+    fi
+    now="$start_epoch"
+  fi
+
+  if [ "$DRY_RUN" != "1" ]; then
+    echo "Randomizing account schedules..."
+    python3 -u schedule_randomizer.py \
+      --deadline-hour "$AUTOREWARDER_SCHEDULE_DEADLINE_HOUR" \
+      --deadline-minute "$AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE" \
+      --safety-buffer-minutes "$AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES"
+  fi
+
+  mapfile -t accounts < <(load_accounts | shuffle_and_limit_accounts)
+  if [ "${#accounts[@]}" -eq 0 ]; then
+    echo "No ready accounts found."
+    exit 0
+  fi
+
+  echo "Randomized account order:"
+  for account in "${accounts[@]}"; do
+    echo "  - $account"
+  done
+
+  pc_left=()
+  mobile_left=()
+  for index in "${!accounts[@]}"; do
+    search_total="$(rand_between "$SEARCH_TOTAL_MIN" "$SEARCH_TOTAL_MAX")"
+    pc="$(rand_between 0 "$search_total")"
+    mobile=$((search_total - pc))
+    pc_left+=("$pc")
+    mobile_left+=("$mobile")
+
+    echo "Planned total for ${accounts[$index]}: pc $pc, mobile $mobile (total $search_total)"
+  done
+
+  while mapfile -t active < <(active_indices) && [ "${#active[@]}" -gt 0 ]; do
+    mapfile -t round < <(printf '%s\n' "${active[@]}" | shuffle_indices)
+    for index in "${round[@]}"; do
+      if [ $((pc_left[index] + mobile_left[index])) -le 0 ]; then
+        continue
+      fi
+      run_account_chunk "$index"
+      mapfile -t active < <(active_indices)
+      wait_between_chunks "${#active[@]}"
+    done
+  done
+
+  if [ "$DRY_RUN" != "1" ]; then
+    log_points_report after "$POINTS_BASELINE_FILE" "$(date +%F)"
+  fi
+  echo "AutoRewarder exited with code $exit_code"
+  exit "$exit_code"
   ) 9>"$LOCK_FILE"
 
   echo "===== Finished $(date) ====="
