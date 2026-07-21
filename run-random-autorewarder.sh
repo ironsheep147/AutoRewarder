@@ -18,7 +18,7 @@ SEARCH_TOTAL_MAX="${SEARCH_TOTAL_MAX:-45}"
 
 MIN_GAP_SECONDS="${MIN_GAP_SECONDS:-300}"
 CHUNK_MIN="${CHUNK_MIN:-1}"
-CHUNK_MAX="${CHUNK_MAX:-5}"
+CHUNK_MAX="${CHUNK_MAX:-3}"
 WAIT_MIN_SECONDS="${WAIT_MIN_SECONDS:-$MIN_GAP_SECONDS}"
 WAIT_MAX_SECONDS="${WAIT_MAX_SECONDS:-1200}"
 
@@ -387,7 +387,10 @@ wait_between_chunks() {
   local remaining_count="$1"
   local now
   local seconds_left
-  local max_wait="$WAIT_MAX_SECONDS"
+  local total_remaining
+  local expected_chunks
+  local target_interval
+  local max_wait
   local wait_seconds
 
   if [ "$remaining_count" -le 0 ]; then
@@ -396,25 +399,51 @@ wait_between_chunks() {
 
   now="$(date +%s)"
   seconds_left=$((end_epoch - now))
+  
+  # If we're running out of time, continue without delay
   if [ "$seconds_left" -le "$WAIT_MIN_SECONDS" ]; then
-    echo "Run window is nearly closed; continuing without a delay."
+    echo "Run window nearly closed; continuing without delay."
     return
   fi
 
-  if [ "$max_wait" -gt "$seconds_left" ]; then
-    max_wait="$seconds_left"
+  # Estimate how many more chunks we'll run (including current one)
+  total_remaining=$((remaining_count + 1))
+  
+  # Calculate expected chunks based on average chunk size
+  local avg_chunk=$(( (CHUNK_MIN + CHUNK_MAX) / 2 ))
+  if [ "$avg_chunk" -le 0 ]; then
+    avg_chunk=1
   fi
-  if [ "$max_wait" -lt "$WAIT_MIN_SECONDS" ]; then
-    max_wait="$WAIT_MIN_SECONDS"
+  expected_chunks=$(( (total_remaining + avg_chunk - 1) / avg_chunk ))
+  
+  # Target interval = remaining time / expected chunks (with 25% jitter)
+  target_interval=$(( seconds_left / expected_chunks ))
+  
+  # Clamp to reasonable bounds
+  if [ "$target_interval" -lt "$WAIT_MIN_SECONDS" ]; then
+    target_interval="$WAIT_MIN_SECONDS"
+  fi
+  
+  # Add jitter: 75% to 125% of target
+  local jitter_low=$(( target_interval * 75 / 100 ))
+  local jitter_high=$(( target_interval * 125 / 100 ))
+  
+  # Don't exceed time left
+  max_wait="$seconds_left"
+  if [ "$jitter_high" -gt "$max_wait" ]; then
+    jitter_high="$max_wait"
+  fi
+  if [ "$jitter_low" -lt "$WAIT_MIN_SECONDS" ]; then
+    jitter_low="$WAIT_MIN_SECONDS"
   fi
 
-  wait_seconds="$(rand_between "$WAIT_MIN_SECONDS" "$max_wait")"
+  wait_seconds="$(rand_between "$jitter_low" "$jitter_high")"
   if [ "$wait_seconds" -le 0 ]; then
     echo "Continuing immediately before the next chunk."
     return
   fi
 
-  echo "Waiting $wait_seconds seconds before the next chunk."
+  echo "Waiting $wait_seconds seconds (target interval ~${target_interval}s) before next chunk."
   if [ "$DRY_RUN" != "1" ]; then
     sleep "$wait_seconds"
   fi
@@ -427,10 +456,6 @@ wait_between_chunks() {
   echo "Chunks: ${CHUNK_MIN}-${CHUNK_MAX}; waits: ${WAIT_MIN_SECONDS}-${WAIT_MAX_SECONDS}s"
   echo "Schedule: deadline ${AUTOREWARDER_SCHEDULE_DEADLINE_HOUR}:${AUTOREWARDER_SCHEDULE_DEADLINE_MINUTE} with ${AUTOREWARDER_SCHEDULE_SAFETY_BUFFER_MINUTES}min buffer"
 
-  cd "$APP_DIR" || {
-    echo "ERROR: Cannot cd to $APP_DIR"
-    exit 1
-  }
 
   date +%F > "$RUN_MARKER_FILE"
 
@@ -461,6 +486,27 @@ wait_between_chunks() {
   start_epoch="$(today_epoch "$START_HOUR" 0)"
   end_epoch="$(today_epoch "$END_HOUR" "$END_MINUTE")"
   exit_code=0
+
+  # Fail-safe: If run window is too short (less than 2 hours),
+  # reduce search targets and prioritize daily tasks
+  window_seconds=$((end_epoch - start_epoch))
+  window_hours=$((window_seconds / 3600))
+  
+  if [ "$window_hours" -lt 2 ]; then
+    echo "WARNING: Run window is very short (${window_hours}h). Reducing search targets."
+    
+    # Reduce to minimums and focus on daily tasks
+    SEARCH_TOTAL_MIN="${SEARCH_TOTAL_MIN:-5}"
+    SEARCH_TOTAL_MAX="${SEARCH_TOTAL_MAX:-10}"
+    CHUNK_MIN="${CHUNK_MIN:-1}"
+    CHUNK_MAX="${CHUNK_MAX:-1}"
+    
+    # Set minimum wait to avoid rapid execution
+    WAIT_MIN_SECONDS="${WAIT_MIN_SECONDS:-60}"
+    WAIT_MAX_SECONDS="${WAIT_MAX_SECONDS:-180}"
+    
+    echo "Adjusted: counts ${SEARCH_TOTAL_MIN}-${SEARCH_TOTAL_MAX}, chunks ${CHUNK_MIN}-${CHUNK_MAX}"
+  fi
 
   if [ "$now" -gt "$end_epoch" ]; then
     echo "Current time is after today's run window. Nothing to run."
